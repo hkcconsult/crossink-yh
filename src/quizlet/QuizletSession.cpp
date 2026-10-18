@@ -2,18 +2,9 @@
 
 #include <utility>
 
+#include "QuizletStudy.h"
+
 namespace quizlet {
-namespace {
-
-// xorshift32: tiny deterministic PRNG, good enough to shuffle flashcards.
-uint32_t nextRandom(uint32_t& state) {
-  state ^= state << 13;
-  state ^= state >> 17;
-  state ^= state << 5;
-  return state;
-}
-
-}  // namespace
 
 void Session::start(const size_t cardCount, const bool shuffle, const uint32_t seed) {
   totalCards = cardCount;
@@ -30,7 +21,7 @@ void Session::start(const size_t cardCount, const bool shuffle, const uint32_t s
   for (size_t i = 0; i < cardCount; ++i) queue.push_back(static_cast<uint16_t>(i));
 
   if (shuffle && cardCount > 1) {
-    uint32_t state = seed != 0 ? seed : 0x9E3779B9u;
+    uint32_t state = seed;
     for (size_t i = cardCount - 1; i > 0; --i) {
       const size_t j = nextRandom(state) % (i + 1);
       std::swap(queue[i], queue[j]);

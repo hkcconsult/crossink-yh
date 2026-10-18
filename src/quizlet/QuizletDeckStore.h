@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "QuizletDeckParser.h"
+#include "QuizletStudy.h"
 
 // SD-card side of the flashcard feature. Decks live as plain text files in
 // /quizlet on the SD card (Quizlet export: "term<TAB>definition" per line).
@@ -27,5 +28,13 @@ void listDecks(std::vector<DeckEntry>& out);
 // Reads and parses a deck. Files larger than kMaxDeckFileBytes are read up to
 // that size (the last, partial line is dropped).
 LoadResult loadDeck(const std::string& path, std::vector<Card>& out);
+
+// Last used study options (mode, answer with, order); defaults when missing.
+StudyOptions loadOptions();
+void saveOptions(const StudyOptions& options);
+
+// Best speed-round score for a deck, and storing a new best.
+unsigned loadSpeedRecord(const std::string& deckPath);
+void saveSpeedRecord(const std::string& deckPath, unsigned best);
 
 }  // namespace quizlet

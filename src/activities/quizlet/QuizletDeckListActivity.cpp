@@ -6,7 +6,7 @@
 #include <Memory.h>
 
 #include "MappedInputManager.h"
-#include "QuizletStudyActivity.h"
+#include "QuizletOptionsActivity.h"
 #include "components/CompactHeader.h"
 #include "components/TouchHeaderBackButton.h"
 #include "components/UITheme.h"
@@ -163,9 +163,9 @@ void QuizletDeckListActivity::render(RenderLock&&) {
 
 void QuizletDeckListActivity::openDeck(const int index) {
   if (index < 0 || index >= static_cast<int>(decks.size())) return;
-  auto study = makeUniqueNoThrow<QuizletStudyActivity>(renderer, mappedInput, decks[index].path, decks[index].title);
+  auto study = makeUniqueNoThrow<QuizletOptionsActivity>(renderer, mappedInput, decks[index].path, decks[index].title);
   if (!study) {
-    LOG_ERR("QZL", "OOM: QuizletStudyActivity");
+    LOG_ERR("QZL", "OOM: QuizletOptionsActivity");
     return;
   }
   startActivityForResult(std::move(study), [this](const ActivityResult&) { requestUpdate(); });

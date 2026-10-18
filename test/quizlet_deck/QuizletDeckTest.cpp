@@ -6,6 +6,7 @@
 
 #include "quizlet/QuizletDeckParser.h"
 #include "quizlet/QuizletSession.h"
+#include "quizlet/QuizletStudy.h"
 using namespace quizlet;
 static int fails = 0;  // counted so every failing check is reported
 #define CHECK(c)                                         \
@@ -99,6 +100,88 @@ int main() {
   Session e;
   e.start(0, true, 1);
   CHECK(e.isFinished());
+
+  // Options round-trip and tolerate junk
+  StudyOptions o;
+  o.mode = StudyMode::Speed;
+  o.answerWith = AnswerWith::Both;
+  o.shuffle = false;
+  const std::string ser = serializeOptions(o);
+  const StudyOptions back = parseOptions(ser.c_str(), ser.size());
+  CHECK(back.mode == StudyMode::Speed && back.answerWith == AnswerWith::Both && !back.shuffle);
+  const char* junk = "mode=9\r\nanswer=x\nfoo\nshuffle=0";
+  const StudyOptions j = parseOptions(junk, strlen(junk));
+  CHECK(j.mode == StudyMode::Flip && j.answerWith == AnswerWith::Definition && !j.shuffle);
+  CHECK(parseOptions(nullptr, 0).shuffle);
+  // Answer direction
+  uint32_t r = 7;
+  CHECK(answerIsDefinition(AnswerWith::Definition, r));
+  CHECK(!answerIsDefinition(AnswerWith::Term, r));
+  int defs = 0;
+  for (int i = 0; i < 200; ++i) defs += answerIsDefinition(AnswerWith::Both, r);
+  CHECK(defs > 50 && defs < 150);
+  // Multiple choice: signaalwoorden-like deck with repeated categories
+  auto sw = parse(
+      "ook\topsommend\nbovendien\topsommend\nmaar\ttegenstellend\nechter\ttegenstellend\nwant\tredengevend\ndus\tconclu"
+      "derend\nkortom\tsamenvattend\n");
+  uint16_t ch[kMaxChoices];
+  size_t slot = 0;
+  uint32_t rng = 42;
+  for (int t = 0; t < 100; ++t) {
+    const uint16_t card = static_cast<uint16_t>(t % sw.size());
+    const size_t n = buildChoices(sw, card, true, rng, ch, slot);
+    CHECK(n == 4);
+    CHECK(slot < n);
+    CHECK(ch[slot] == card);
+    for (size_t a = 0; a < n; ++a)
+      for (size_t b = a + 1; b < n; ++b) CHECK(sw[ch[a]].definition != sw[ch[b]].definition);
+  }
+  // Correct slot varies
+  bool slots[4] = {};
+  for (int t = 0; t < 50; ++t) {
+    buildChoices(sw, 0, true, rng, ch, slot);
+    slots[slot] = true;
+  }
+  CHECK(slots[0] && slots[1] && slots[2] && slots[3]);
+  // Answer with term uses terms as options
+  CHECK(buildChoices(sw, 2, false, rng, ch, slot) == 4 && sw[ch[slot]].term == "maar");
+  // Too few distinct answers
+  auto same = parse("a\tx\nb\tX\n");
+  CHECK(buildChoices(same, 0, true, rng, ch, slot) == 0);
+  auto two = parse("a\tx\nb\ty\n");
+  CHECK(buildChoices(two, 1, true, rng, ch, slot) == 2 && ch[slot] == 1);
+  // Overlapping answers are never offered together
+  auto ov = parse(
+      "nadat\ttijdsvolgorde\nten slotte\topsommend / tijdsvolgorde\nzoals\tuitleggend / "
+      "vergelijkend\nbijvoorbeeld\tuitleggend\nnet als\tvergelijkend\nmaar\ttegenstellend\nwant\tredengevend\n");
+  for (int t = 0; t < 200; ++t) {
+    const uint16_t card = static_cast<uint16_t>(t % ov.size());
+    const size_t n = buildChoices(ov, card, true, rng, ch, slot);
+    CHECK(n >= 2 && ch[slot] == card);
+    for (size_t a = 0; a < n; ++a)
+      for (size_t b = a + 1; b < n; ++b) {
+        const std::string& x = ov[ch[a]].definition;
+        const std::string& y = ov[ch[b]].definition;
+        const bool clash = x.find(y) != std::string::npos || y.find(x) != std::string::npos;
+        CHECK(!clash);
+      }
+  }
+  // Answer with term: other cards in the same category are valid answers, never distractors
+  for (int t = 0; t < 200; ++t) {
+    const uint16_t card = static_cast<uint16_t>(t % sw.size());
+    const size_t n = buildChoices(sw, card, false, rng, ch, slot);
+    CHECK(n >= 2 && ch[slot] == card);
+    for (size_t a = 0; a < n; ++a)
+      if (a != slot) CHECK(sw[ch[a]].definition != sw[card].definition);
+  }
+  // Records
+  std::string rec;
+  CHECK(recordFor(rec, "/quizlet/a.txt") == 0);
+  rec = withRecord(rec, "/quizlet/a.txt", 12);
+  rec = withRecord(rec, "/quizlet/b b.txt", 5);
+  rec = withRecord(rec, "/quizlet/a.txt", 15);
+  CHECK(recordFor(rec, "/quizlet/a.txt") == 15 && recordFor(rec, "/quizlet/b b.txt") == 5);
+  CHECK(rec.find("\t12") == std::string::npos);
   printf(fails ? "%d FAILED\n" : "all tests passed\n", fails);
   return fails != 0;
 }

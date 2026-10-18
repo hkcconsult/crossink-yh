@@ -3,6 +3,9 @@
 ### Added
 
 - Flashcards: study Quizlet exports (term and definition separated by a tab, `;` or ` - `) from `/quizlet` on the SD card. Flip with Confirm, then mark a card as known or send it back for another try; tap and swipe on touch devices. The Home entry appears once a deck is on the card.
+- Flashcard study options before each round: Mode (flip cards, multiple choice, 60-second speed round), Answer with (definition, term or both) and Order (shuffled or in order). The last choice is remembered.
+- Multiple choice puts options A to D on the four front buttons; hold A to stop. Wrong options never overlap with the right answer, so category decks stay fair.
+- Speed round: answer as many as possible in 60 seconds and beat your record per deck.
 
 ## [v1.6.1] - 2026-10-03
 
