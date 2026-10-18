@@ -84,6 +84,7 @@ void QuizletStudyActivity::activateCjkFontIfNeeded() {
   sdFontSystem.releaseRegistry();
   if (familyName.empty()) {
     LOG_INF("QZL", "Deck has CJK text but no CJK font is installed");
+    cjkIssue = CjkFontIssue::Missing;
     return;
   }
   // Same swap the dictionary uses: one SD family stays resident, and the
@@ -91,7 +92,9 @@ void QuizletStudyActivity::activateCjkFontIfNeeded() {
   RenderLock lock;
   const DictionaryFontActivation activation = sdFontSystem.activateDictionaryFont(renderer, familyName.c_str(), 16);
   if (!activation.usingDictionaryFont || activation.fontId == 0) {
-    LOG_ERR("QZL", "Could not load CJK font %s", familyName.c_str());
+    LOG_ERR("QZL", "Could not load CJK font %s (free=%u maxAlloc=%u)", familyName.c_str(),
+            static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+    cjkIssue = CjkFontIssue::LowMemory;
     return;
   }
   usingCjkFont = true;
@@ -366,6 +369,24 @@ void QuizletStudyActivity::renderMessage(const char* message) const {
 }
 
 void QuizletStudyActivity::renderStatus(const int top) const {
+  const char* issue = nullptr;
+  switch (cjkIssue) {
+    case CjkFontIssue::None:
+      break;
+    case CjkFontIssue::Missing:
+      issue = tr(STR_QUIZLET_CJK_MISSING);
+      break;
+    case CjkFontIssue::LowMemory:
+      issue = tr(STR_QUIZLET_CJK_LOW_MEMORY);
+      break;
+    case CjkFontIssue::GlyphsFailed:
+      issue = tr(STR_QUIZLET_CJK_GLYPHS_FAILED);
+      break;
+  }
+  if (issue) {
+    renderer.drawCenteredText(kSmallFont, top, issue);
+    return;
+  }
   char status[64];
   if (options.mode == quizlet::StudyMode::Speed) {
     snprintf(status, sizeof(status), tr(STR_QUIZLET_SPEED_STATUS_FORMAT), speedSecondsLeft(), speedCorrect);
@@ -496,7 +517,9 @@ void QuizletStudyActivity::render(RenderLock&&) {
   // collects the text, the glyphs are read from the card, then the real pass
   // draws. The scope frees the glyph cache again after the refresh.
   auto* fontCache = renderer.getFontCacheManager();
-  auto scope = fontCache->createPrewarmScope();
+  // Lean like the dictionary: skip the kerning tables (tens of KB for a CJK
+  // font) that CJK text does not use, so the C3 heap has room for the glyphs.
+  auto scope = fontCache->createPrewarmScope(FontCacheManager::PreparationPolicy::DictionaryLean);
   drawScreen();
   // The scan pass measures text before its glyphs exist, so wrapping can cut a
   // line short and skip characters. Record the full card texts as well.
@@ -510,7 +533,13 @@ void QuizletStudyActivity::render(RenderLock&&) {
       }
     }
   }
-  scope.endScanAndPrewarm();
+  if (!scope.endScanAndPrewarm()) {
+    LOG_ERR("QZL", "CJK glyph prewarm failed (free=%u maxAlloc=%u)", static_cast<unsigned>(ESP.getFreeHeap()),
+            static_cast<unsigned>(ESP.getMaxAllocHeap()));
+    cjkIssue = CjkFontIssue::GlyphsFailed;
+  } else if (cjkIssue == CjkFontIssue::GlyphsFailed) {
+    cjkIssue = CjkFontIssue::None;
+  }
   drawScreen();
   renderer.displayBuffer();
 }

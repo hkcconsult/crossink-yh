@@ -49,6 +49,9 @@ class QuizletStudyActivity final : public Activity {
   int contextFont = UI_12_FONT_ID;  // prompt repeated above the answer
   // True while an SD-card CJK family replaces the reader font for this deck.
   bool usingCjkFont = false;
+  // Why CJK text may still show as boxes; shown in place of the status line.
+  enum class CjkFontIssue : uint8_t { None, Missing, LowMemory, GlyphsFailed };
+  CjkFontIssue cjkIssue = CjkFontIssue::None;
   uint32_t rng = 1;
 
   // Current card presentation.
