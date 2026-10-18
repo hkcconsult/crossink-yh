@@ -10,6 +10,7 @@
 #include "quizlet/QuizletDeckStore.h"
 #include "quizlet/QuizletSession.h"
 #include "quizlet/QuizletStudy.h"
+#include "quizlet/QuizletProgress.h"
 
 // Studies one deck in the mode chosen on the options screen.
 //
@@ -25,7 +26,7 @@
 class QuizletStudyActivity final : public Activity {
  public:
   QuizletStudyActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string deckPath,
-                       std::string deckTitle, quizlet::StudyOptions options);
+                       std::string deckTitle, quizlet::StudyOptions options, bool resume = false);
 
   void onEnter() override;
   void onExit() override;
@@ -42,6 +43,11 @@ class QuizletStudyActivity final : public Activity {
   quizlet::StudyOptions options;
   std::vector<quizlet::Card> cards;
   quizlet::Session session;
+  // Leitner boxes per card; saved on exit when an answer changed them.
+  quizlet::DeckProgress progress;
+  bool progressDirty = false;
+  bool resume = false;  // continue the saved unfinished round
+  unsigned answeredInRound = 0;  // nothing to save for a round left untouched
   quizlet::LoadResult loadResult = quizlet::LoadResult::Ok;
   int frontFont = 0;
   int backFont = 0;
@@ -82,6 +88,8 @@ class QuizletStudyActivity final : public Activity {
 
   void resolveCardFonts();
   void activateCjkFontIfNeeded();
+  bool resumeSavedRound();
+  void saveRoundState();
   void drawScreen();
   void restart();
   void prepareCard();

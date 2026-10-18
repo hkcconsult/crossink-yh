@@ -6,6 +6,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <SecureHttpClient.h>
 #include <WiFi.h>
 
 #include <algorithm>
@@ -119,7 +120,7 @@ bool QuizletSyncActivity::pollCancel() {
 bool QuizletSyncActivity::runSync() {
   LOG_INF("QZL", "Sync start: free=%u maxAlloc=%u", static_cast<unsigned>(ESP.getFreeHeap()),
           static_cast<unsigned>(ESP.getMaxAllocHeap()));
-  updated = removed = unchanged = 0;
+  updated = removed = unchanged = uploaded = 0;
   progressIndex = progressTotal = 0;
 
   // wolfSSL, like the OPDS book downloads: mbedTLS managed the first request
@@ -152,15 +153,35 @@ bool QuizletSyncActivity::runSync() {
   quizlet::parseRemoteList(listText.get(), listLength, remote);
   listText.reset();
 
-  // 2. Plan against what is on the card.
+  // 2. Send learning progress so the dashboard can show the hard cards. A
+  // failed upload does not fail the sync; the next sync sends it again.
+  for (const auto& deck : remote) {
+    if (pollCancel()) return false;
+    const std::string text = quizlet::loadProgressText(deck.file);
+    if (text.empty()) continue;
+    freeink::SecureHttpClient http;
+    http.setInsecure();
+    http.setTimeout(20000);
+    if (!http.begin(deviceUrl(("/api/device/decks/" + deck.id + "/progress").c_str()))) continue;
+    http.addHeader("Content-Type", "text/plain; charset=utf-8");
+    const int status = http.sendRequest("POST", text);
+    http.end();
+    if (status == 200) {
+      ++uploaded;
+    } else {
+      LOG_ERR("QZL", "Progress upload for %s failed (%d)", deck.file.c_str(), status);
+    }
+  }
+
+  // 3. Plan against what is on the card.
   std::vector<std::string> localFiles;
   quizlet::listDeckFiles(localFiles);
   std::vector<quizlet::SyncedEntry> synced = quizlet::loadSyncedState();
   const quizlet::SyncPlan plan = quizlet::planSync(remote, synced, localFiles);
   unchanged = static_cast<unsigned>(plan.unchanged);
   progressTotal = static_cast<unsigned>(plan.download.size());
-  LOG_INF("QZL", "Sync plan: %u to download, %u to remove, %u unchanged", progressTotal,
-          static_cast<unsigned>(plan.remove.size()), unchanged);
+  LOG_INF("QZL", "Sync plan: %u to download, %u to remove, %u unchanged, progress sent for %u", progressTotal,
+          static_cast<unsigned>(plan.remove.size()), unchanged, uploaded);
 
   // The new synced state: every remote deck that is (or stays) on the card.
   std::vector<quizlet::SyncedEntry> nextState;
@@ -171,7 +192,7 @@ bool QuizletSyncActivity::runSync() {
     if (!pending) nextState.push_back({deck.file, deck.updatedAt});
   }
 
-  // 3. Download new and changed decks. A failed deck keeps its old file.
+  // 4. Download new and changed decks. A failed deck keeps its old file.
   bool allOk = true;
   HttpDownloader::DownloadOptions deckOptions;
   deckOptions.shouldCancel = [this]() { return pollCancel(); };
@@ -207,7 +228,7 @@ bool QuizletSyncActivity::runSync() {
     }
   }
 
-  // 4. Remove decks that were deleted on the dashboard (only ones we synced).
+  // 5. Remove decks that were deleted on the dashboard (only ones we synced).
   if (!cancelRequested) {
     for (const auto& file : plan.remove) {
       const std::string path = std::string(quizlet::kDeckDir) + "/" + file;

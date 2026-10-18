@@ -44,11 +44,13 @@ bool wasAnyReleased(const MappedInputManager& input, const MappedInputManager::B
 }  // namespace
 
 QuizletStudyActivity::QuizletStudyActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string deckPath,
-                                           std::string deckTitle, const quizlet::StudyOptions options)
+                                           std::string deckTitle, const quizlet::StudyOptions options,
+                                           const bool resume)
     : Activity("QuizletStudy", renderer, mappedInput),
       deckPath(std::move(deckPath)),
       deckTitle(std::move(deckTitle)),
-      options(options) {}
+      options(options),
+      resume(resume) {}
 
 void QuizletStudyActivity::resolveCardFonts() {
 #if CROSSINK_SCALABLE_FONTS
@@ -106,14 +108,63 @@ void QuizletStudyActivity::onEnter() {
   Activity::onEnter();
   resolveCardFonts();
   loadResult = quizlet::loadDeck(deckPath, cards);
-  if (loadResult == quizlet::LoadResult::Ok) activateCjkFontIfNeeded();
+  if (loadResult == quizlet::LoadResult::Ok) {
+    activateCjkFontIfNeeded();
+    progress = quizlet::loadProgress(deckPath, cards);
+  }
   rng = static_cast<uint32_t>(millis()) | 1u;
-  if (options.mode == quizlet::StudyMode::Speed) speedRecord = quizlet::loadSpeedRecord(deckPath);
-  restart();
+  if (!(resume && resumeSavedRound())) {
+    if (options.mode == quizlet::StudyMode::Speed) speedRecord = quizlet::loadSpeedRecord(deckPath);
+    restart();
+  }
   requestUpdate();
 }
 
+bool QuizletStudyActivity::resumeSavedRound() {
+  quizlet::SavedRound saved;
+  if (loadResult != quizlet::LoadResult::Ok || !quizlet::loadRound(deckPath, saved)) return false;
+  // Map saved card keys back to deck indices; cards removed by a sync are skipped.
+  std::vector<std::pair<uint16_t, uint8_t>> pending;
+  pending.reserve(saved.pending.size());
+  for (const auto& [key, again] : saved.pending) {
+    for (size_t i = 0; i < progress.cards.size(); ++i) {
+      if (progress.cards[i].key == key) {
+        pending.emplace_back(static_cast<uint16_t>(i), again);
+        break;
+      }
+    }
+  }
+  if (pending.empty()) return false;
+  options = saved.options;
+  session.restore(pending, cards.size(), saved.total, saved.known, saved.firstTry);
+  answeredInRound = 1;  // keep saving the continued round
+  choiceUnavailable = false;
+  prepareCard();
+  return true;
+}
+
+void QuizletStudyActivity::saveRoundState() {
+  // Speed rounds are timed and finished rounds have nothing left to continue.
+  if (loadResult != quizlet::LoadResult::Ok || options.mode == quizlet::StudyMode::Speed || session.isFinished() ||
+      answeredInRound == 0) {
+    quizlet::removeRound(deckPath);
+    return;
+  }
+  quizlet::SavedRound round;
+  round.options = options;
+  round.total = session.cardCount();
+  round.known = session.knownCount();
+  round.firstTry = session.firstTryCount();
+  for (const auto& [index, again] : session.pendingCards()) round.pending.emplace_back(progress.cards[index].key, again);
+  quizlet::saveRound(deckPath, round);
+}
+
 void QuizletStudyActivity::onExit() {
+  saveRoundState();
+  if (progressDirty) {
+    quizlet::saveProgress(deckPath, progress);
+    progressDirty = false;
+  }
   // Release the deck right away; it can be tens of KB on the ESP32-C3.
   cards.clear();
   cards.shrink_to_fit();
@@ -144,7 +195,14 @@ unsigned QuizletStudyActivity::speedSecondsLeft() const {
 }
 
 void QuizletStudyActivity::restart() {
-  session.start(cards.size(), options.shuffle, rng);
+  answeredInRound = 0;
+  if (options.order == quizlet::Order::Smart && options.mode != quizlet::StudyMode::Speed) {
+    ++progress.rounds;
+    progressDirty = true;
+    session.startWith(quizlet::pickSmartRound(progress.cards, progress.rounds, rng), cards.size());
+  } else {
+    session.start(cards.size(), options.order != quizlet::Order::InOrder, rng);
+  }
   quizlet::nextRandom(rng);
   speedStartMs = millis();
   speedCorrect = 0;
@@ -180,6 +238,11 @@ void QuizletStudyActivity::prepareCard() {
 }
 
 void QuizletStudyActivity::advance(const bool knewIt) {
+  if (!session.isFinished() && session.currentCard() < progress.cards.size()) {
+    quizlet::recordAnswer(progress.cards[session.currentCard()], knewIt, session.isFirstAttempt());
+    progressDirty = true;
+    ++answeredInRound;
+  }
   if (knewIt) {
     session.markKnown();
   } else {

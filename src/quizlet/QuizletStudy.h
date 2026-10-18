@@ -16,10 +16,13 @@ enum class StudyMode : uint8_t { Flip = 0, MultipleChoice = 1, Speed = 2 };
 // definition is the answer (Quizlet's default "Answer with: Definition").
 enum class AnswerWith : uint8_t { Definition = 0, Term = 1, Both = 2 };
 
+// Smart: Leitner, due and hard cards first (see QuizletProgress.h).
+enum class Order : uint8_t { InOrder = 0, Shuffled = 1, Smart = 2 };
+
 struct StudyOptions {
   StudyMode mode = StudyMode::Flip;
   AnswerWith answerWith = AnswerWith::Definition;
-  bool shuffle = true;
+  Order order = Order::Smart;
 };
 
 constexpr uint32_t kSpeedRoundMs = 60 * 1000;
@@ -34,7 +37,8 @@ inline uint32_t nextRandom(uint32_t& state) {
   return state;
 }
 
-// "mode=1\nanswer=0\nshuffle=1\n". Unknown or invalid lines keep defaults.
+// "mode=1\nanswer=0\norder=2\n". Unknown or invalid lines keep defaults; the
+// older "shuffle=0/1" line still maps to in order / shuffled.
 std::string serializeOptions(const StudyOptions& options);
 StudyOptions parseOptions(const char* text, size_t length);
 

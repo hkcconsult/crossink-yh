@@ -31,6 +31,7 @@ class QuizletSyncActivity final : public Activity {
   unsigned updated = 0;
   unsigned removed = 0;
   unsigned unchanged = 0;
+  unsigned uploaded = 0;  // decks whose progress reached the dashboard
 
   void onWifiReady(bool connected);
   bool runSync();

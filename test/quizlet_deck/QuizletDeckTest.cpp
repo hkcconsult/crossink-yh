@@ -5,6 +5,7 @@
 #include <set>
 
 #include "quizlet/QuizletDeckParser.h"
+#include "quizlet/QuizletProgress.h"
 #include "quizlet/QuizletSession.h"
 #include "quizlet/QuizletStudy.h"
 #include "quizlet/QuizletSync.h"
@@ -106,14 +107,14 @@ int main() {
   StudyOptions o;
   o.mode = StudyMode::Speed;
   o.answerWith = AnswerWith::Both;
-  o.shuffle = false;
+  o.order = Order::InOrder;
   const std::string ser = serializeOptions(o);
   const StudyOptions back = parseOptions(ser.c_str(), ser.size());
-  CHECK(back.mode == StudyMode::Speed && back.answerWith == AnswerWith::Both && !back.shuffle);
+  CHECK(back.mode == StudyMode::Speed && back.answerWith == AnswerWith::Both && back.order == Order::InOrder);
   const char* junk = "mode=9\r\nanswer=x\nfoo\nshuffle=0";
   const StudyOptions j = parseOptions(junk, strlen(junk));
-  CHECK(j.mode == StudyMode::Flip && j.answerWith == AnswerWith::Definition && !j.shuffle);
-  CHECK(parseOptions(nullptr, 0).shuffle);
+  CHECK(j.mode == StudyMode::Flip && j.answerWith == AnswerWith::Definition && j.order == Order::InOrder);
+  CHECK(parseOptions(nullptr, 0).order == Order::Smart);
   // Answer direction
   uint32_t r = 7;
   CHECK(answerIsDefinition(AnswerWith::Definition, r));
@@ -224,6 +225,70 @@ int main() {
   CHECK(!containsCjk("caf\xC3\xA9 \xE2\x80\x94"));          // café —
   CHECK(containsCjk("x\xEF\xBC\x8C"));                        // fullwidth comma
   CHECK(isCjkFamilyName("NotoSansCJK") && isCjkFamilyName("my-cjk-font") && !isCjkFamilyName("Literata"));
+  // Leitner progress
+  {
+    CHECK(cardKey(Card{"hond", "dog"}) == 0x6a722bc5u);  // same FNV-1a as the dashboard
+    CardProgress p;
+    recordAnswer(p, true, true);
+    CHECK(p.box == 2 && p.right == 1);
+    recordAnswer(p, true, true);
+    recordAnswer(p, true, true);
+    recordAnswer(p, true, true);
+    CHECK(p.box == kMaxBox);
+    recordAnswer(p, false, true);
+    CHECK(p.box == 1 && p.wrong == 1);
+    recordAnswer(p, true, false);  // known after "again": stays in box 1
+    CHECK(p.box == 1 && p.right == 4);
+    CHECK(isDue(0, 3) && isDue(1, 3) && isDue(2, 4) && !isDue(2, 3) && isDue(5, 32) && !isDue(5, 8));
+
+    std::vector<CardProgress> deck(30);
+    for (size_t i = 0; i < deck.size(); ++i) deck[i].box = static_cast<uint8_t>(i < 3 ? 1 : i < 10 ? 0 : 4);
+    uint32_t rng = 42;
+    auto round = pickSmartRound(deck, 3, rng);  // box 4 not due in round 3
+    CHECK(round.size() == 10);
+    CHECK(deck[round[0]].box == 1 && deck[round[2]].box == 1 && deck[round[3]].box == 0);
+    for (auto& c : deck) c.box = 5;
+    round = pickSmartRound(deck, 3, rng);  // nothing due: top up to 5
+    CHECK(round.size() == 5);
+    deck.resize(60, CardProgress{});
+    round = pickSmartRound(deck, 3, rng);
+    CHECK(round.size() == kSmartRoundSize);
+
+    std::vector<Card> cards = {{"a", "1"}, {"b", "2"}, {"c", "3"}};
+    DeckProgress dp = parseProgress(nullptr, 0, cards);
+    dp.rounds = 7;
+    dp.cards[1].box = 3;
+    dp.cards[1].wrong = 2;
+    dp.cards[2].right = 1;
+    const std::string text = serializeProgress(dp);
+    std::vector<Card> reordered = {{"c", "3"}, {"x", "9"}, {"b", "2"}};
+    DeckProgress back = parseProgress(text.c_str(), text.size(), reordered);
+    CHECK(back.rounds == 7 && back.cards[2].box == 3 && back.cards[2].wrong == 2 && back.cards[0].right == 1);
+    CHECK(back.cards[1].box == 0 && back.cards[1].wrong == 0);
+
+    SavedRound sr;
+    sr.options.mode = StudyMode::MultipleChoice;
+    sr.total = 5;
+    sr.known = 2;
+    sr.firstTry = 1;
+    sr.pending = {{0xabcdef01u, 0}, {0x12u, 2}, {0x3u, 1}};
+    const std::string rt = serializeRound(sr);
+    SavedRound rb;
+    CHECK(parseRound(rt.c_str(), rt.size(), rb));
+    CHECK(rb.options.mode == StudyMode::MultipleChoice && rb.known == 2 && rb.pending.size() == 3 &&
+          rb.pending[1].first == 0x12u && rb.pending[1].second == 2);
+    CHECK(!parseRound("", 0, rb));
+
+    Session s;
+    s.restore({{4, 0}, {1, 2}}, 6, 5, 3, 2);
+    CHECK(s.currentCard() == 4 && s.knownCount() == 3 && s.remainingCount() == 2 && s.isFirstAttempt());
+    s.markKnown();
+    CHECK(!s.isFirstAttempt());
+    s.markAgain();
+    CHECK(s.pendingCards().size() == 1 && s.pendingCards()[0].second == 3);
+    s.startWith({2, 0}, 6);
+    CHECK(s.cardCount() == 2 && s.currentCard() == 2);
+  }
   printf(fails ? "%d FAILED\n" : "all tests passed\n", fails);
   return fails != 0;
 }

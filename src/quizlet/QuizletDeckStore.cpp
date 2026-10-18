@@ -39,6 +39,19 @@ bool writeSmallFile(const char* path, const std::string& content, const char* di
   return true;
 }
 
+constexpr char kProgressDir[] = "/quizlet/.progress";
+// Up to 500 cards of about 20 bytes each.
+constexpr size_t kProgressFileBytes = 16 * 1024;
+
+std::string baseName(const std::string& path) {
+  const size_t slash = path.find_last_of('/');
+  return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+std::string progressPathFor(const std::string& deckFileName) {
+  return std::string(kProgressDir) + "/" + deckFileName;
+}
+
 // The synced list holds one short line per dashboard deck.
 constexpr size_t kSyncedFileBytes = 16 * 1024;
 
@@ -153,6 +166,33 @@ void saveSpeedRecord(const std::string& deckPath, const unsigned best) {
     return;
   }
   (void)writeSmallFile(kRecordsPath, updated);
+}
+
+DeckProgress loadProgress(const std::string& deckPath, const std::vector<Card>& deck) {
+  const std::string text = readSmallFile(progressPathFor(baseName(deckPath)).c_str(), kProgressFileBytes);
+  return parseProgress(text.c_str(), text.size(), deck);
+}
+
+bool saveProgress(const std::string& deckPath, const DeckProgress& progress) {
+  return writeSmallFile(progressPathFor(baseName(deckPath)).c_str(), serializeProgress(progress), kProgressDir);
+}
+
+std::string loadProgressText(const std::string& deckFileName) {
+  return readSmallFile(progressPathFor(deckFileName).c_str(), kProgressFileBytes);
+}
+
+bool loadRound(const std::string& deckPath, SavedRound& out) {
+  const std::string text = readSmallFile((progressPathFor(baseName(deckPath)) + ".round").c_str(), kProgressFileBytes);
+  return parseRound(text.c_str(), text.size(), out);
+}
+
+bool saveRound(const std::string& deckPath, const SavedRound& round) {
+  return writeSmallFile((progressPathFor(baseName(deckPath)) + ".round").c_str(), serializeRound(round), kProgressDir);
+}
+
+void removeRound(const std::string& deckPath) {
+  const std::string path = progressPathFor(baseName(deckPath)) + ".round";
+  if (Storage.exists(path.c_str())) Storage.remove(path.c_str());
 }
 
 }  // namespace quizlet

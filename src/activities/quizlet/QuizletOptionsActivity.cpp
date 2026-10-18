@@ -5,6 +5,8 @@
 #include <Logging.h>
 #include <Memory.h>
 
+#include <algorithm>
+#include <cstdio>
 #include <utility>
 
 #include "MappedInputManager.h"
@@ -44,6 +46,18 @@ const char* answerLabel(const quizlet::AnswerWith answer) {
   }
   return "";
 }
+
+const char* orderLabel(const quizlet::Order order) {
+  switch (order) {
+    case quizlet::Order::InOrder:
+      return tr(STR_QUIZLET_IN_ORDER);
+    case quizlet::Order::Shuffled:
+      return tr(STR_QUIZLET_SHUFFLED);
+    case quizlet::Order::Smart:
+      return tr(STR_QUIZLET_SMART);
+  }
+  return "";
+}
 }  // namespace
 
 QuizletOptionsActivity::QuizletOptionsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -57,13 +71,21 @@ QuizletOptionsActivity::QuizletOptionsActivity(GfxRenderer& renderer, MappedInpu
 void QuizletOptionsActivity::onEnter() {
   Activity::onEnter();
   options = quizlet::loadOptions();
-  selectedIndex = RowStart;
+  refreshRound();
+  selectedIndex = 0;
   backArmed = false;
   uiReady = false;
   applySharedUiTheme(app, uiTarget);
   app.on(ACTION_ROW, &QuizletOptionsActivity::onRowEvent, this);
   app.setScreen(&QuizletOptionsActivity::listScreen, this);
   requestUpdate();
+}
+
+void QuizletOptionsActivity::refreshRound() {
+  quizlet::SavedRound round;
+  hasRound = quizlet::loadRound(deckPath, round);
+  roundLeft = static_cast<unsigned>(round.pending.size());
+  snprintf(continueLabel, sizeof(continueLabel), tr(STR_QUIZLET_CONTINUE_FORMAT), roundLeft);
 }
 
 void QuizletOptionsActivity::loop() {
@@ -86,27 +108,30 @@ void QuizletOptionsActivity::loop() {
     }
   }
   buttonNavigator.onNextRelease([this] {
-    selectedIndex = ButtonNavigator::nextIndex(selectedIndex, RowCount);
+    selectedIndex = ButtonNavigator::nextIndex(selectedIndex, rowCount());
     requestUpdate();
   });
   buttonNavigator.onPreviousRelease([this] {
-    selectedIndex = ButtonNavigator::previousIndex(selectedIndex, RowCount);
+    selectedIndex = ButtonNavigator::previousIndex(selectedIndex, rowCount());
     requestUpdate();
   });
 }
 
 void QuizletOptionsActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<QuizletOptionsActivity*>(user);
-  if (event.value < 0 || event.value >= RowCount) return;
+  if (event.value < 0 || event.value >= self->rowCount()) return;
   self->selectedIndex = event.value;
   self->app.clearTapFlash();
   self->activate(event.value);
 }
 
-void QuizletOptionsActivity::activate(const int row) {
-  switch (row) {
+void QuizletOptionsActivity::activate(const int index) {
+  switch (rowAt(index)) {
+    case RowContinue:
+      startStudy(true);
+      return;
     case RowStart:
-      startStudy();
+      startStudy(false);
       return;
     case RowMode:
       options.mode = static_cast<quizlet::StudyMode>((static_cast<int>(options.mode) + 1) % 3);
@@ -115,23 +140,26 @@ void QuizletOptionsActivity::activate(const int row) {
       options.answerWith = static_cast<quizlet::AnswerWith>((static_cast<int>(options.answerWith) + 1) % 3);
       break;
     case RowOrder:
-      options.shuffle = !options.shuffle;
+      options.order = static_cast<quizlet::Order>((static_cast<int>(options.order) + 1) % 3);
       break;
-    default:
+    case RowTotal:
       return;
   }
   quizlet::saveOptions(options);
   requestUpdate();
 }
 
-void QuizletOptionsActivity::startStudy() {
-  auto study = makeUniqueNoThrow<QuizletStudyActivity>(renderer, mappedInput, deckPath, deckTitle, options);
+void QuizletOptionsActivity::startStudy(const bool resume) {
+  auto study = makeUniqueNoThrow<QuizletStudyActivity>(renderer, mappedInput, deckPath, deckTitle, options, resume);
   if (!study) {
     LOG_ERR("QZL", "OOM: QuizletStudyActivity");
     return;
   }
   startActivityForResult(std::move(study), [this](const ActivityResult&) {
     backArmed = false;
+    refreshRound();
+    // Back on top: Continue when the round was left unfinished, else Start.
+    selectedIndex = 0;
     requestUpdate();
   });
 }
@@ -146,19 +174,38 @@ void QuizletOptionsActivity::buildListScreen(UiApp::ScreenType& screen) {
                                       static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  fui::ListItem items[RowCount];
-  items[RowStart].label = tr(STR_QUIZLET_START);
-  items[RowMode].label = tr(STR_QUIZLET_MODE);
-  items[RowMode].value = modeLabel(options.mode);
-  items[RowAnswer].label = tr(STR_QUIZLET_ANSWER_WITH);
-  items[RowAnswer].value = answerLabel(options.answerWith);
-  items[RowOrder].label = tr(STR_QUIZLET_ORDER);
-  items[RowOrder].value = options.shuffle ? tr(STR_QUIZLET_SHUFFLED) : tr(STR_QUIZLET_IN_ORDER);
-  for (int16_t i = 0; i < RowCount; ++i) items[i].actionValue = i;
+  fui::ListItem items[RowTotal];
+  const int count = rowCount();
+  for (int i = 0; i < count; ++i) {
+    fui::ListItem& item = items[i];
+    item.actionValue = static_cast<int16_t>(i);
+    switch (rowAt(i)) {
+      case RowContinue:
+        item.label = continueLabel;
+        break;
+      case RowStart:
+        item.label = hasRound ? tr(STR_QUIZLET_START_NEW) : tr(STR_QUIZLET_START);
+        break;
+      case RowMode:
+        item.label = tr(STR_QUIZLET_MODE);
+        item.value = modeLabel(options.mode);
+        break;
+      case RowAnswer:
+        item.label = tr(STR_QUIZLET_ANSWER_WITH);
+        item.value = answerLabel(options.answerWith);
+        break;
+      case RowOrder:
+        item.label = tr(STR_QUIZLET_ORDER);
+        item.value = orderLabel(options.order);
+        break;
+      case RowTotal:
+        break;
+    }
+  }
 
   fui::ListProps props;
   props.items = items;
-  props.count = RowCount;
+  props.count = static_cast<int16_t>(count);
   props.selectedIndex = static_cast<int16_t>(selectedIndex);
   props.action = ACTION_ROW;
   props.inputMask = static_cast<uint16_t>(fui::InputTouch);
@@ -180,7 +227,8 @@ void QuizletOptionsActivity::render(RenderLock&&) {
   app.render();
   uiReady = true;
 
-  const char* confirm = selectedIndex == RowStart ? tr(STR_QUIZLET_START) : tr(STR_SELECT);
+  const Row row = rowAt(selectedIndex);
+  const char* confirm = row == RowStart || row == RowContinue ? tr(STR_QUIZLET_START) : tr(STR_SELECT);
   const auto labels =
       mappedInput.mapLabels(mappedInput.withBackArrow(tr(STR_BACK)), confirm, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

@@ -81,7 +81,7 @@ std::string serializeOptions(const StudyOptions& options) {
   std::string out;
   out += "mode=" + std::to_string(static_cast<unsigned>(options.mode)) + "\n";
   out += "answer=" + std::to_string(static_cast<unsigned>(options.answerWith)) + "\n";
-  out += std::string("shuffle=") + (options.shuffle ? "1" : "0") + "\n";
+  out += "order=" + std::to_string(static_cast<unsigned>(options.order)) + "\n";
   return out;
 }
 
@@ -92,7 +92,8 @@ StudyOptions parseOptions(const char* text, const size_t length) {
     const long number = strtol(value.c_str(), nullptr, 10);
     if (key == "mode" && number >= 0 && number <= 2) options.mode = static_cast<StudyMode>(number);
     if (key == "answer" && number >= 0 && number <= 2) options.answerWith = static_cast<AnswerWith>(number);
-    if (key == "shuffle") options.shuffle = number != 0;
+    if (key == "shuffle") options.order = number != 0 ? Order::Shuffled : Order::InOrder;
+    if (key == "order" && number >= 0 && number <= 2) options.order = static_cast<Order>(number);
   });
   return options;
 }

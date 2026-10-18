@@ -29,6 +29,42 @@ void Session::start(const size_t cardCount, const bool shuffle, const uint32_t s
   }
 }
 
+void Session::startWith(std::vector<uint16_t> order, const size_t deckSize) {
+  queue = std::move(order);
+  attempts.assign(deckSize, 0);
+  totalCards = queue.size();
+  position = 0;
+  known = 0;
+  firstTry = 0;
+  flipped = false;
+}
+
+void Session::restore(const std::vector<std::pair<uint16_t, uint8_t>>& pending, const size_t deckSize,
+                      const size_t total, const size_t known_, const size_t firstTry_) {
+  queue.clear();
+  queue.reserve(pending.size() + pending.size() / 2 + 1);
+  attempts.assign(deckSize, 0);
+  for (const auto& [card, again] : pending) {
+    if (card >= deckSize) continue;
+    queue.push_back(card);
+    attempts[card] = again;
+  }
+  position = 0;
+  known = known_;
+  firstTry = firstTry_;
+  totalCards = known + queue.size();
+  (void)total;  // derived from known + pending so a changed deck stays consistent
+  flipped = false;
+}
+
+std::vector<std::pair<uint16_t, uint8_t>> Session::pendingCards() const {
+  std::vector<std::pair<uint16_t, uint8_t>> out;
+  if (isFinished()) return out;
+  out.reserve(queue.size() - position);
+  for (size_t i = position; i < queue.size(); ++i) out.emplace_back(queue[i], attempts[queue[i]]);
+  return out;
+}
+
 void Session::markKnown() {
   if (isFinished()) return;
   const uint16_t card = queue[position];

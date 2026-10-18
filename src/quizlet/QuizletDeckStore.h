@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "QuizletDeckParser.h"
+#include "QuizletProgress.h"
 #include "QuizletStudy.h"
 #include "QuizletSync.h"
 
@@ -47,5 +48,16 @@ std::vector<SyncedEntry> loadSyncedState();
 bool saveSyncedState(const std::vector<SyncedEntry>& entries);
 // File names (not paths) of the deck files currently in /quizlet.
 void listDeckFiles(std::vector<std::string>& out);
+
+// Leitner progress per deck, in /quizlet/.progress/<deck file name>.
+DeckProgress loadProgress(const std::string& deckPath, const std::vector<Card>& deck);
+bool saveProgress(const std::string& deckPath, const DeckProgress& progress);
+// Raw progress file for a deck file name (for the dashboard upload); empty if none.
+std::string loadProgressText(const std::string& deckFileName);
+
+// Unfinished round per deck, in /quizlet/.progress/<deck file name>.round.
+bool loadRound(const std::string& deckPath, SavedRound& out);
+bool saveRound(const std::string& deckPath, const SavedRound& round);
+void removeRound(const std::string& deckPath);
 
 }  // namespace quizlet

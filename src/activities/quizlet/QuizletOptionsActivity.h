@@ -22,13 +22,20 @@ class QuizletOptionsActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum Row : int16_t { RowStart = 0, RowMode, RowAnswer, RowOrder, RowCount };
+  // RowContinue is only shown while an unfinished round is saved for the deck.
+  enum Row : int16_t { RowContinue = 0, RowStart, RowMode, RowAnswer, RowOrder, RowTotal };
 
   std::string deckPath;
   std::string deckTitle;
   quizlet::StudyOptions options;
   ButtonNavigator buttonNavigator;
   int selectedIndex = 0;
+  bool hasRound = false;
+  unsigned roundLeft = 0;
+  char continueLabel[48] = {};
+  int rowCount() const { return hasRound ? RowTotal : RowTotal - 1; }
+  Row rowAt(int index) const { return static_cast<Row>(hasRound ? index : index + 1); }
+  void refreshRound();
   using UiApp = freeink::ui::FreeInkApp<8, 4>;
   freeink::ui::GfxRendererTarget uiTarget;
   UiApp app;
@@ -40,6 +47,6 @@ class QuizletOptionsActivity final : public Activity {
   static void listScreen(UiApp::ScreenType& screen, void* user);
   static void onRowEvent(const freeink::ui::ActionEvent& event, void* user);
   void buildListScreen(UiApp::ScreenType& screen);
-  void activate(int row);
-  void startStudy();
+  void activate(int index);
+  void startStudy(bool resume);
 };
