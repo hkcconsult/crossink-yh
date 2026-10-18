@@ -2414,11 +2414,15 @@ void HomeActivity::onReadingStatsOpen() {
 }
 
 void HomeActivity::onQuizletOpen() {
-  startActivityForResult(std::make_unique<QuizletDeckListActivity>(renderer, mappedInput),
-                         [this](const ActivityResult&) {
-                           hasQuizletDecks = quizlet::hasDecks();
-                           requestUpdate();
-                         });
+  // Replace Home like Settings and File Transfer do, so Home's cover and
+  // carousel buffers are freed. A dashboard sync needs that heap for TLS on
+  // the ESP32-C3. The deck list returns with onGoHome().
+  auto decks = makeUniqueNoThrow<QuizletDeckListActivity>(renderer, mappedInput);
+  if (!decks) {
+    LOG_ERR("HOME", "OOM: QuizletDeckListActivity");
+    return;
+  }
+  activityManager.replaceActivity(std::move(decks));
 }
 
 void HomeActivity::onSavedItemsOpen() {

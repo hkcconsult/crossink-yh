@@ -117,6 +117,8 @@ bool QuizletSyncActivity::pollCancel() {
 }
 
 bool QuizletSyncActivity::runSync() {
+  LOG_INF("QZL", "Sync start: free=%u maxAlloc=%u", static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
   updated = removed = unchanged = 0;
   progressIndex = progressTotal = 0;
 
