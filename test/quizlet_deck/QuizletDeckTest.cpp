@@ -7,6 +7,7 @@
 #include "quizlet/QuizletDeckParser.h"
 #include "quizlet/QuizletSession.h"
 #include "quizlet/QuizletStudy.h"
+#include "quizlet/QuizletSync.h"
 using namespace quizlet;
 static int fails = 0;  // counted so every failing check is reported
 #define CHECK(c)                                         \
@@ -182,6 +183,41 @@ int main() {
   rec = withRecord(rec, "/quizlet/a.txt", 15);
   CHECK(recordFor(rec, "/quizlet/a.txt") == 15 && recordFor(rec, "/quizlet/b b.txt") == 5);
   CHECK(rec.find("\t12") == std::string::npos);
+
+  // Sync config
+  SyncConfig cfg;
+  const char* cfgText = "url=https://dashboard.example.nl/\r\ntoken=abc123\n";
+  CHECK(parseSyncConfig(cfgText, strlen(cfgText), cfg));
+  CHECK(cfg.url == "https://dashboard.example.nl" && cfg.token == "abc123");
+  const char* badCfg = "url=ftp://x\ntoken=a\n";
+  CHECK(!parseSyncConfig(badCfg, strlen(badCfg), cfg));
+  CHECK(!parseSyncConfig("url=https://x\n", 14, cfg));
+  // Safe file names
+  CHECK(safeDeckFile("Frans H3.txt") == "Frans H3.txt");
+  CHECK(safeDeckFile("../../etc/passwd") == "etc passwd.txt");
+  CHECK(safeDeckFile(".hidden") == "hidden.txt");
+  CHECK(safeDeckFile("") == "set.txt");
+  CHECK(safeDeckFile(std::string(100, 'x')).size() == 64);
+  // Remote list with duplicate names
+  std::vector<RemoteDeck> remote;
+  const char* list =
+      "1\t2026-10-18T10:00:00Z\tFrans.txt\n2\t2026-10-18T11:00:00Z\tBio.txt\r\n3\t2026-10-18T12:00:00Z\tFrans."
+      "txt\nkapot\n";
+  CHECK(parseRemoteList(list, strlen(list), remote) == 3);
+  CHECK(remote[2].file == "Frans (2).txt" && remote[1].updatedAt == "2026-10-18T11:00:00Z");
+  // Synced state round trip
+  std::vector<SyncedEntry> synced = {{"Frans.txt", "2026-10-18T10:00:00Z"}, {"Oud.txt", "x"}, {"Bio.txt", "older"}};
+  const std::string state = serializeSyncedState(synced);
+  CHECK(parseSyncedState(state.c_str(), state.size()).size() == 3);
+  // Plan: Frans unchanged, Bio changed, Frans (2) new, Oud removed, Eigen.txt (manual) untouched
+  std::vector<std::string> local = {"Frans.txt", "Bio.txt", "Oud.txt", "Eigen.txt"};
+  SyncPlan plan = planSync(remote, synced, local);
+  CHECK(plan.unchanged == 1);
+  CHECK(plan.download.size() == 2 && plan.download[0].file == "Bio.txt" && plan.download[1].file == "Frans (2).txt");
+  CHECK(plan.remove.size() == 1 && plan.remove[0] == "Oud.txt");
+  // A synced file the user deleted locally is downloaded again
+  plan = planSync(remote, synced, {"Bio.txt"});
+  CHECK(plan.download.size() == 3 && plan.unchanged == 0 && plan.remove.empty());
   printf(fails ? "%d FAILED\n" : "all tests passed\n", fails);
   return fails != 0;
 }

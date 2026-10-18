@@ -15,26 +15,32 @@ constexpr int kMaxListedFiles = 200;
 constexpr char kStateDir[] = "/.crosspoint";
 constexpr char kOptionsPath[] = "/.crosspoint/quizlet_options.txt";
 constexpr char kRecordsPath[] = "/.crosspoint/quizlet_records.txt";
+constexpr char kSyncedPath[] = "/quizlet/.synced";
 // Both files are tiny; the records file holds one short line per deck.
 constexpr size_t kSmallFileBytes = 4096;
 
-std::string readSmallFile(const char* path) {
+std::string readSmallFile(const char* path, const size_t maxBytes = kSmallFileBytes) {
   if (!Storage.exists(path)) return {};
   // Heap, not stack: 4 KB would eat half of the ESP32 main-loop stack.
-  auto buffer = makeUniqueNoThrow<char[]>(kSmallFileBytes);
+  auto buffer = makeUniqueNoThrow<char[]>(maxBytes);
   if (!buffer) {
     LOG_ERR("QZL", "OOM: reading %s", path);
     return {};
   }
-  const size_t n = Storage.readFileToBuffer(path, buffer.get(), kSmallFileBytes);
+  const size_t n = Storage.readFileToBuffer(path, buffer.get(), maxBytes);
   return std::string(buffer.get(), n);
 }
 
-void writeSmallFile(const char* path, const std::string& content) {
-  if (!Storage.ensureDirectoryExists(kStateDir) || !Storage.writeFile(path, String(content.c_str()))) {
+bool writeSmallFile(const char* path, const std::string& content, const char* dir = kStateDir) {
+  if (!Storage.ensureDirectoryExists(dir) || !Storage.writeFile(path, String(content.c_str()))) {
     LOG_ERR("QZL", "Could not write %s", path);
+    return false;
   }
+  return true;
 }
+
+// The synced list holds one short line per dashboard deck.
+constexpr size_t kSyncedFileBytes = 16 * 1024;
 
 bool lessCaseInsensitive(const DeckEntry& a, const DeckEntry& b) {
   return std::lexicographical_compare(
@@ -47,6 +53,7 @@ bool lessCaseInsensitive(const DeckEntry& a, const DeckEntry& b) {
 
 bool hasDecks() {
   if (!Storage.exists(kDeckDir)) return false;
+  if (Storage.exists(kSyncConfigPath)) return true;
   for (const auto& name : Storage.listFiles(kDeckDir, kMaxListedFiles)) {
     if (isDeckFileName(name.c_str())) return true;
   }
@@ -101,12 +108,41 @@ LoadResult loadDeck(const std::string& path, std::vector<Card>& out) {
   return out.empty() ? LoadResult::Empty : LoadResult::Ok;
 }
 
+bool hasSyncConfig() { return Storage.exists(kSyncConfigPath); }
+
+bool loadSyncConfig(SyncConfig& out) {
+  const std::string text = readSmallFile(kSyncConfigPath);
+  return parseSyncConfig(text.c_str(), text.size(), out);
+}
+
+std::vector<SyncedEntry> loadSyncedState() {
+  const std::string text = readSmallFile(kSyncedPath, kSyncedFileBytes);
+  return parseSyncedState(text.c_str(), text.size());
+}
+
+bool saveSyncedState(const std::vector<SyncedEntry>& entries) {
+  const std::string text = serializeSyncedState(entries);
+  if (text.size() >= kSyncedFileBytes) {
+    LOG_ERR("QZL", "Synced list too large (%u bytes)", static_cast<unsigned>(text.size()));
+    return false;
+  }
+  return writeSmallFile(kSyncedPath, text, kDeckDir);
+}
+
+void listDeckFiles(std::vector<std::string>& out) {
+  out.clear();
+  if (!Storage.exists(kDeckDir)) return;
+  for (const auto& name : Storage.listFiles(kDeckDir, kMaxListedFiles)) {
+    if (isDeckFileName(name.c_str())) out.emplace_back(name.c_str());
+  }
+}
+
 StudyOptions loadOptions() {
   const std::string text = readSmallFile(kOptionsPath);
   return parseOptions(text.c_str(), text.size());
 }
 
-void saveOptions(const StudyOptions& options) { writeSmallFile(kOptionsPath, serializeOptions(options)); }
+void saveOptions(const StudyOptions& options) { (void)writeSmallFile(kOptionsPath, serializeOptions(options)); }
 
 unsigned loadSpeedRecord(const std::string& deckPath) { return recordFor(readSmallFile(kRecordsPath), deckPath); }
 
@@ -116,7 +152,7 @@ void saveSpeedRecord(const std::string& deckPath, const unsigned best) {
     LOG_ERR("QZL", "Records file full, not saving");
     return;
   }
-  writeSmallFile(kRecordsPath, updated);
+  (void)writeSmallFile(kRecordsPath, updated);
 }
 
 }  // namespace quizlet

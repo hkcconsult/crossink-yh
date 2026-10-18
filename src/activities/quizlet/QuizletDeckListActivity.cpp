@@ -7,6 +7,7 @@
 
 #include "MappedInputManager.h"
 #include "QuizletOptionsActivity.h"
+#include "QuizletSyncActivity.h"
 #include "components/CompactHeader.h"
 #include "components/TouchHeaderBackButton.h"
 #include "components/UITheme.h"
@@ -26,7 +27,7 @@ QuizletDeckListActivity::QuizletDeckListActivity(GfxRenderer& renderer, MappedIn
 
 void QuizletDeckListActivity::onEnter() {
   Activity::onEnter();
-  quizlet::listDecks(decks);
+  reload();
   selectedIndex = 0;
   topIndex = 0;
   visibleRows = 1;
@@ -53,11 +54,11 @@ void QuizletDeckListActivity::loop() {
     return;
   }
 
-  const int listSize = static_cast<int>(decks.size());
+  const int listSize = rowCount();
   if (listSize == 0) return;
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    openDeck(selectedIndex);
+    activateRow(selectedIndex);
     return;
   }
 
@@ -100,10 +101,10 @@ void QuizletDeckListActivity::loop() {
 
 void QuizletDeckListActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<QuizletDeckListActivity*>(user);
-  if (event.value < 0 || event.value >= static_cast<int16_t>(self->decks.size())) return;
+  if (event.value < 0 || event.value >= static_cast<int16_t>(self->rowCount())) return;
   self->selectedIndex = event.value;
   self->app.clearTapFlash();
-  self->openDeck(self->selectedIndex);
+  self->activateRow(self->selectedIndex);
 }
 
 void QuizletDeckListActivity::listScreen(UiApp::ScreenType& screen, void* user) {
@@ -115,16 +116,22 @@ void QuizletDeckListActivity::buildListScreen(UiApp::ScreenType& screen) {
   screen.setContentMargin(fui::Insets{static_cast<int16_t>(CompactHeader::contentTop(metrics)), 0,
                                       static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
-  if (decks.empty()) {
+  if (rowCount() == 0) {
     screen.centeredText(tr(STR_QUIZLET_NO_DECKS), screen.theme().bodyText);
     return;
   }
   std::vector<fui::ListItem> items;
-  items.reserve(decks.size());
+  items.reserve(rowCount());
+  if (hasSync) {
+    fui::ListItem item;
+    item.label = tr(STR_QUIZLET_SYNC);
+    item.actionValue = 0;
+    items.push_back(item);
+  }
   for (size_t i = 0; i < decks.size(); ++i) {
     fui::ListItem item;
     item.label = decks[i].title.c_str();
-    item.actionValue = static_cast<int16_t>(i);
+    item.actionValue = static_cast<int16_t>(items.size());
     items.push_back(item);
   }
   fui::ListProps props;
@@ -137,7 +144,7 @@ void QuizletDeckListActivity::buildListScreen(UiApp::ScreenType& screen) {
   const fui::Rect bounds = screen.body();
   const auto rows = configureUiList(props, screen.theme(), bounds, UiListRowType::SingleLine);
   visibleRows = rows > 0 ? rows : 1;
-  topIndex = scrollListBy(topIndex, 0, visibleRows, static_cast<int>(decks.size()));
+  topIndex = scrollListBy(topIndex, 0, visibleRows, rowCount());
   props.topIndex = static_cast<uint16_t>(topIndex);
   screen.list(props);
 }
@@ -154,11 +161,39 @@ void QuizletDeckListActivity::render(RenderLock&&) {
   app.render();
   uiReady = true;
 
-  const char* openLabel = decks.empty() ? nullptr : tr(STR_OPEN);
+  const char* openLabel = rowCount() == 0 ? nullptr : tr(STR_OPEN);
   const auto labels =
       mappedInput.mapLabels(mappedInput.withBackArrow(tr(STR_HOME)), openLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
+}
+
+void QuizletDeckListActivity::reload() {
+  quizlet::listDecks(decks);
+  hasSync = quizlet::hasSyncConfig();
+}
+
+void QuizletDeckListActivity::activateRow(const int row) {
+  if (hasSync && row == 0) {
+    openSync();
+    return;
+  }
+  openDeck(row - (hasSync ? 1 : 0));
+}
+
+void QuizletDeckListActivity::openSync() {
+  auto sync = makeUniqueNoThrow<QuizletSyncActivity>(renderer, mappedInput);
+  if (!sync) {
+    LOG_ERR("QZL", "OOM: QuizletSyncActivity");
+    return;
+  }
+  startActivityForResult(std::move(sync), [this](const ActivityResult&) {
+    // The deck files may have changed; keep the selection on the sync row.
+    reload();
+    selectedIndex = 0;
+    topIndex = 0;
+    requestUpdate();
+  });
 }
 
 void QuizletDeckListActivity::openDeck(const int index) {

@@ -6,6 +6,11 @@
 - Flashcard study options before each round: Mode (flip cards, multiple choice, 60-second speed round), Answer with (definition, term or both) and Order (shuffled or in order). The last choice is remembered.
 - Multiple choice puts options A to D on the four front buttons; hold A to stop. Wrong options never overlap with the right answer, so category decks stay fair.
 - Speed round: answer as many as possible in 60 seconds and beat your record per deck.
+- Sync flashcard decks from the YH dashboard over Wi-Fi: put the downloaded sync.cfg in /quizlet and choose Sync with dashboard. Only new or changed decks are downloaded; decks deleted on the dashboard are removed, and decks you copied to the card yourself are left alone.
+
+### Fixed
+
+- Settings could no longer be reached in the Home menu once the Flashcards entry was shown.
 
 ## [v1.6.1] - 2026-10-03
 

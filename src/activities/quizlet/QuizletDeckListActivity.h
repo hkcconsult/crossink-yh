@@ -22,6 +22,7 @@ class QuizletDeckListActivity final : public Activity {
 
  private:
   std::vector<quizlet::DeckEntry> decks;
+  bool hasSync = false;  // first row is "Sync with dashboard" when /quizlet/sync.cfg exists
   ButtonNavigator buttonNavigator;
   int selectedIndex = 0;
   using UiApp = freeink::ui::FreeInkApp<20, 4>;
@@ -34,5 +35,9 @@ class QuizletDeckListActivity final : public Activity {
   static void listScreen(UiApp::ScreenType& screen, void* user);
   static void onRowEvent(const freeink::ui::ActionEvent& event, void* user);
   void buildListScreen(UiApp::ScreenType& screen);
+  int rowCount() const { return static_cast<int>(decks.size()) + (hasSync ? 1 : 0); }
+  void reload();
+  void activateRow(int row);
+  void openSync();
   void openDeck(int index);
 };

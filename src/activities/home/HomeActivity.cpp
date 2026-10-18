@@ -557,6 +557,9 @@ int HomeActivity::getMenuItemCount() const {
   if (hasBookmarks || hasClippings) {
     count++;
   }
+  if (hasQuizletDecks) {
+    count++;  // Flashcards, see appendHomeMenuItems()
+  }
   return count;
 }
 
