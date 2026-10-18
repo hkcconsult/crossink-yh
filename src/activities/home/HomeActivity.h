@@ -49,6 +49,7 @@ class HomeActivity final : public Activity {
   bool hasBookmarks = false;
   bool hasClippings = false;
   bool hasOpdsServers = false;
+  bool hasQuizletDecks = false;
   bool minimalMenuOpen = false;
   bool minimalSuppressInitialFrontRelease = false;
   bool homeBookSwapLongPressHandled = false;
@@ -106,6 +107,7 @@ class HomeActivity final : public Activity {
   void onOpdsBrowserOpen();
   void onReadingStatsOpen();
   void onSavedItemsOpen();
+  void onQuizletOpen();
 
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image

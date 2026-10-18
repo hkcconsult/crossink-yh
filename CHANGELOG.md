@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Added
+
+- Flashcards: study Quizlet exports (term and definition separated by a tab, `;` or ` - `) from `/quizlet` on the SD card. Flip with Confirm, then mark a card as known or send it back for another try; tap and swipe on touch devices. The Home entry appears once a deck is on the card.
+
 ## [v1.6.1] - 2026-10-03
 
 ### Added

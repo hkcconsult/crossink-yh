@@ -35,11 +35,13 @@
 #include "RecentBookProgress.h"
 #include "RecentBooksStore.h"
 #include "SavedItemsHomeActivity.h"
+#include "activities/quizlet/QuizletDeckListActivity.h"
 #include "components/UITheme.h"
 #include "components/themes/dashboard/DashboardTheme.h"
 #include "components/themes/lyra/LyraCarouselTheme.h"
 #include "components/themes/minimal/MinimalTheme.h"
 #include "fontIds.h"
+#include "quizlet/QuizletDeckStore.h"
 
 namespace {
 constexpr uint32_t CAROUSEL_CACHE_MAGIC = 0x43434152;  // "CCAR"
@@ -61,6 +63,7 @@ enum class HomeMenuAction {
   ReadingStats,
   Bookmarks,
   FileTransfer,
+  Quizlet,
   Settings,
 };
 
@@ -71,7 +74,7 @@ struct HomeMenuEntry {
 };
 
 struct HomeMenuEntries {
-  static constexpr int kCapacity = 8;
+  static constexpr int kCapacity = 9;
   std::array<HomeMenuEntry, kCapacity> entries{};
   int count = 0;
 
@@ -234,7 +237,7 @@ const char* savedItemsLabel(bool hasBookmarks, bool hasClippings) {
 }
 
 void appendHomeMenuItems(HomeMenuEntries& items, bool hasOpdsServers, bool hasReadingStats, bool hasBookmarks,
-                         bool hasClippings) {
+                         bool hasClippings, bool hasQuizletDecks) {
   items.push({tr(STR_BROWSE_FILES), Folder, HomeMenuAction::BrowseFiles});
   items.push({tr(STR_LIBRARY), Library, HomeMenuAction::Library});
 
@@ -247,18 +250,23 @@ void appendHomeMenuItems(HomeMenuEntries& items, bool hasOpdsServers, bool hasRe
   if (hasBookmarks || hasClippings) {
     items.push({savedItemsLabel(hasBookmarks, hasClippings), BookmarkIcon, HomeMenuAction::Bookmarks});
   }
+  if (hasQuizletDecks) {
+    items.push({tr(STR_QUIZLET_TITLE), Text, HomeMenuAction::Quizlet});
+  }
 
   items.push({tr(STR_FILE_TRANSFER), Transfer, HomeMenuAction::FileTransfer});
   items.push({tr(STR_SETTINGS_TITLE), Settings, HomeMenuAction::Settings});
 }
 
-HomeMenuEntries buildHomeMenuItems(bool hasOpdsServers, bool hasReadingStats, bool hasBookmarks, bool hasClippings) {
+HomeMenuEntries buildHomeMenuItems(bool hasOpdsServers, bool hasReadingStats, bool hasBookmarks, bool hasClippings,
+                                   bool hasQuizletDecks) {
   HomeMenuEntries items;
-  appendHomeMenuItems(items, hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings);
+  appendHomeMenuItems(items, hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings, hasQuizletDecks);
   return items;
 }
 
-HomeMenuEntries buildMinimalMenuItems(bool hasOpdsServers, bool hasReadingStats, bool hasBookmarks, bool hasClippings) {
+HomeMenuEntries buildMinimalMenuItems(bool hasOpdsServers, bool hasReadingStats, bool hasBookmarks, bool hasClippings,
+                                      bool hasQuizletDecks) {
   HomeMenuEntries items;
   if (SETTINGS.isLibraryFileBrowserSwapped()) {
     items.push({tr(STR_BROWSE_FILES), Folder, HomeMenuAction::BrowseFiles});
@@ -275,18 +283,21 @@ HomeMenuEntries buildMinimalMenuItems(bool hasOpdsServers, bool hasReadingStats,
   if (hasReadingStats) {
     items.push({tr(STR_READING_STATS), Chart, HomeMenuAction::ReadingStats});
   }
+  if (hasQuizletDecks) {
+    items.push({tr(STR_QUIZLET_TITLE), Text, HomeMenuAction::Quizlet});
+  }
 
   items.push({tr(STR_FILE_TRANSFER), Transfer, HomeMenuAction::FileTransfer});
   return items;
 }
 
 HomeMenuEntries buildSelectableHomeMenuItems(bool hasOpdsServers, bool hasReadingStats, bool hasBookmarks,
-                                             bool hasClippings, bool includeContinueReading) {
+                                             bool hasClippings, bool hasQuizletDecks, bool includeContinueReading) {
   HomeMenuEntries items;
   if (includeContinueReading) {
     items.push({tr(STR_CONTINUE_READING), Book, HomeMenuAction::ContinueReading});
   }
-  appendHomeMenuItems(items, hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings);
+  appendHomeMenuItems(items, hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings, hasQuizletDecks);
   return items;
 }
 
@@ -813,6 +824,7 @@ void HomeActivity::onEnter() {
   Activity::onEnter();
 
   hasOpdsServers = OPDS_STORE.hasServers();
+  hasQuizletDecks = quizlet::hasDecks();
   if (UITheme::hasCoverGridHome()) {
     coverGridUi = makeUniqueNoThrow<CoverGridHomeUi>(renderer);
     if (!coverGridUi) LOG_ERR("HOME", "Cannot allocate cover grid UI; using standard Home");
@@ -904,7 +916,7 @@ void HomeActivity::onEnter() {
   } else if (initialMenuItem != HomeMenuItem::NONE) {
     const bool includeContinueReading = metrics.homeContinueReadingInMenu && !recentBooks.empty();
     const auto menuItems = buildSelectableHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings,
-                                                        includeContinueReading);
+                                                        hasQuizletDecks, includeContinueReading);
     const int menuIndex = findMenuActionIndex(menuItems, homeActionForInitialMenuItem(initialMenuItem));
     if (menuIndex >= 0) {
       selectorIndex = getHomeMenuSelectionOffset(recentBooks) + menuIndex;
@@ -1442,7 +1454,8 @@ void HomeActivity::loop() {
     }
 
     if (minimalMenuOpen) {
-      const auto menuItems = buildMinimalMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings);
+      const auto menuItems =
+          buildMinimalMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings, hasQuizletDecks);
       const int menuCount = static_cast<int>(menuItems.size());
       if (menuCount <= 0) {
         minimalMenuOpen = false;
@@ -1474,6 +1487,9 @@ void HomeActivity::loop() {
             break;
           case HomeMenuAction::FileTransfer:
             onFileTransferOpen();
+            break;
+          case HomeMenuAction::Quizlet:
+            onQuizletOpen();
             break;
           case HomeMenuAction::ContinueReading:
           case HomeMenuAction::Settings:
@@ -1662,7 +1678,8 @@ void HomeActivity::loop() {
   const int visibleBookCount = getVisibleRecentBookCount();
   const int carouselMenuItemCount =
       isCarousel
-          ? static_cast<int>(buildHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings).size())
+          ? static_cast<int>(
+                buildHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings, hasQuizletDecks).size())
           : 0;
 
   MappedInputManager::SwipeDir carouselSwipe = MappedInputManager::SwipeDir::None;
@@ -1720,6 +1737,9 @@ void HomeActivity::loop() {
       case HomeMenuAction::FileTransfer:
         onFileTransferOpen();
         break;
+      case HomeMenuAction::Quizlet:
+        onQuizletOpen();
+        break;
       case HomeMenuAction::Settings:
         onSettingsOpen();
         break;
@@ -1733,8 +1753,9 @@ void HomeActivity::loop() {
       return;
     }
 
-    auto menuItems = buildSelectableHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings,
-                                                  metrics.homeContinueReadingInMenu && !recentBooks.empty());
+    auto menuItems =
+        buildSelectableHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings, hasQuizletDecks,
+                                     metrics.homeContinueReadingInMenu && !recentBooks.empty());
     const int menuSelectedIndex = selectorIndex - getHomeMenuSelectionOffset(recentBooks);
     if (menuSelectedIndex < 0 || menuSelectedIndex >= static_cast<int>(menuItems.size())) {
       return;
@@ -1780,7 +1801,8 @@ void HomeActivity::loop() {
       if (activate && mappedInput.wasItemTapped(touchedMenuIndex)) {
         if (touchedMenuIndex < 0 || touchedMenuIndex >= menuItemCount) return false;
         carouselMenuTouchDownIndex = -1;
-        const auto menuItems = buildHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings);
+        const auto menuItems =
+            buildHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings, hasQuizletDecks);
         activateHomeMenuAction(menuItems[touchedMenuIndex].action);
         return true;
       }
@@ -1915,8 +1937,9 @@ void HomeActivity::loop() {
     }
   } else {
     const auto& metrics = UITheme::getInstance().getMetrics();
-    const auto menuItems = buildSelectableHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings,
-                                                        metrics.homeContinueReadingInMenu && !recentBooks.empty());
+    const auto menuItems =
+        buildSelectableHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings, hasQuizletDecks,
+                                     metrics.homeContinueReadingInMenu && !recentBooks.empty());
     auto handleTouch = [&](const bool activate) {
       int touchedBookIndex = -1;
       if (activate ? mappedInput.wasCoverTapped(touchedBookIndex) : mappedInput.wasCoverTouchedDown(touchedBookIndex)) {
@@ -2085,7 +2108,8 @@ void HomeActivity::render(RenderLock&&) {
 
     if (minimalMenuOpen) {
       GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr);
-      const auto menuItems = buildMinimalMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings);
+      const auto menuItems =
+          buildMinimalMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings, hasQuizletDecks);
       GUI.drawButtonMenu(
           renderer, Rect{0, metrics.homeTopPadding, pageWidth, pageHeight - metrics.homeTopPadding},
           static_cast<int>(menuItems.size()), minimalMenuIndex,
@@ -2172,7 +2196,8 @@ void HomeActivity::render(RenderLock&&) {
       carouselTheme.drawReadingProgress(renderer, coverRect, recentBooks,
                                         hasAnyBookStats(currentBookStats) ? &currentBookStats : nullptr,
                                         currentBookProgressPercent);
-      const auto menuItems = buildHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings);
+      const auto menuItems =
+          buildHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings, hasQuizletDecks);
       const int menuHighlightIndex = mappedInput.hasTouchHardware()
                                          ? carouselMenuTouchDownIndex
                                          : (inCarouselRow ? -1 : selectorIndex - static_cast<int>(recentBooks.size()));
@@ -2201,8 +2226,9 @@ void HomeActivity::render(RenderLock&&) {
   renderer.clearScreen();
   bool bufferRestored = coverBufferStored && restoreCoverBuffer();
 
-  auto menuItems = buildSelectableHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings,
-                                                metrics.homeContinueReadingInMenu && !recentBooks.empty());
+  auto menuItems =
+      buildSelectableHomeMenuItems(hasOpdsServers, hasReadingStats, hasBookmarks, hasClippings, hasQuizletDecks,
+                                   metrics.homeContinueReadingInMenu && !recentBooks.empty());
   int homeCoverTileHeight = metrics.homeCoverTileHeight;
   if (SETTINGS.uiTheme == CrossPointSettings::UI_THEME::CLASSIC) {
     // Keep the four always-present actions clear of the button-hint strip on
@@ -2382,6 +2408,14 @@ void HomeActivity::onReadingStatsOpen() {
                              requestUpdate();
                            });
   }
+}
+
+void HomeActivity::onQuizletOpen() {
+  startActivityForResult(std::make_unique<QuizletDeckListActivity>(renderer, mappedInput),
+                         [this](const ActivityResult&) {
+                           hasQuizletDecks = quizlet::hasDecks();
+                           requestUpdate();
+                         });
 }
 
 void HomeActivity::onSavedItemsOpen() {

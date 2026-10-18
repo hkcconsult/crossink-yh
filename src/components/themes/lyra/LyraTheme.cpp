@@ -88,6 +88,8 @@ const freeink::Icon* LyraTheme::iconForName(UIIcon icon, uint32_t size) {
         return &icon_folder_32;
       case UIIcon::Book:
         return &icon_book_marked_32;
+      case UIIcon::Text:
+        return &icon_file_text_32;
       case UIIcon::Recent:
         return &icon_history_32;
       case UIIcon::Settings:
