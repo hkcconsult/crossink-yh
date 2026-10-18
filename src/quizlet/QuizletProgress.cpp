@@ -95,8 +95,39 @@ std::vector<uint16_t> pickSmartRound(const std::vector<CardProgress>& cards, con
   return picked;
 }
 
+namespace {
+int boxWeight(const unsigned box) { return box <= 1 ? 0 : static_cast<int>((std::min<unsigned>(box, kMaxBox) - 1) * 25); }
+}  // namespace
+
+int masteryPercent(const std::vector<CardProgress>& cards) {
+  if (cards.empty()) return 0;
+  long total = 0;
+  for (const auto& card : cards) total += boxWeight(card.box);
+  return static_cast<int>(total / static_cast<long>(cards.size()));
+}
+
+int masteryPercentFromText(const char* text, const size_t length) {
+  if (text == nullptr) return -1;
+  unsigned long deckSize = 0;
+  long total = 0;
+  forEachLine(text, length, [&](const std::string& line) {
+    if (startsWith(line, "cards=")) {
+      deckSize = valueAfter(line, 6);
+      return;
+    }
+    if (startsWith(line, "rounds=")) return;
+    char* end = nullptr;
+    strtoul(line.c_str(), &end, 16);
+    if (end == line.c_str()) return;
+    total += boxWeight(static_cast<unsigned>(strtoul(end, nullptr, 10)));
+  });
+  if (deckSize == 0) return -1;
+  return static_cast<int>(std::min<long>(100, total / static_cast<long>(deckSize)));
+}
+
 std::string serializeProgress(const DeckProgress& progress) {
   std::string out = "rounds=" + std::to_string(progress.rounds) + "\n";
+  out += "cards=" + std::to_string(progress.cards.size()) + "\n";
   char line[48];
   for (const auto& card : progress.cards) {
     if (card.box == 0 && card.wrong == 0 && card.right == 0) continue;
@@ -125,6 +156,7 @@ DeckProgress parseProgress(const char* text, const size_t length, const std::vec
       progress.rounds = static_cast<uint32_t>(valueAfter(line, 7));
       return;
     }
+    if (startsWith(line, "cards=")) return;  // deck size for the overview only
     char* end = nullptr;
     const uint32_t key = static_cast<uint32_t>(strtoul(line.c_str(), &end, 16));
     if (end == line.c_str()) return;

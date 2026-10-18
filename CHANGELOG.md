@@ -8,12 +8,14 @@
 - Speed round: answer as many as possible in 60 seconds and beat your record per deck.
 - Sync flashcard decks from the YH dashboard over Wi-Fi: put the downloaded sync.cfg in /quizlet and choose Sync with dashboard. Only new or changed decks are downloaded; decks deleted on the dashboard are removed, and decks you copied to the card yourself are left alone.
 - Smart order for flashcards (Leitner boxes): cards you get wrong come back first and every round, cards you know well come back less often. Progress is kept per deck in /quizlet/.progress and sent to the dashboard on sync, which lists the hard cards.
+- The deck list shows how well each deck is known as a percentage.
 - An unfinished flashcard round is saved when you leave it; Continue picks it up again from the options screen.
 - Chinese gets its own Home entry for decks in /chinese (shown when that folder exists). Its Sync with dashboard fetches only the decks the dashboard files under Chinese.
 - Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
 
 ### Fixed
 
+- Holding A to stop a multiple-choice or speed round did not always work with Chinese decks: a slow render could hide the press.
 - Settings could no longer be reached in the Home menu once the Flashcards entry was shown.
 - Flashcard sync on the X4 fetched the deck list but then failed on every deck download. Sync now uses the same TLS connection as OPDS downloads and retries each deck once.
 

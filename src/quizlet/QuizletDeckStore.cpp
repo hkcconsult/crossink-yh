@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 
 namespace quizlet {
@@ -101,6 +102,10 @@ void listDecks(const Library library, std::vector<DeckEntry>& out) {
     DeckEntry entry;
     entry.title = deckTitleFromFileName(name.c_str());
     entry.path = std::string(dir) + "/" + name.c_str();
+    // Progress files are small (about 20 bytes per studied card).
+    const std::string progressText = readSmallFile(progressPathOf(entry.path).c_str(), kProgressFileBytes);
+    entry.mastery = masteryPercentFromText(progressText.c_str(), progressText.size());
+    if (entry.mastery >= 0) snprintf(entry.masteryText, sizeof(entry.masteryText), "%d%%", entry.mastery);
     out.push_back(std::move(entry));
   }
   std::sort(out.begin(), out.end(), lessCaseInsensitive);

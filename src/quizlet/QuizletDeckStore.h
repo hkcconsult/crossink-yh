@@ -33,6 +33,8 @@ uint8_t studyMenus();
 struct DeckEntry {
   std::string title;  // file name without extension
   std::string path;   // full SD path
+  int mastery = -1;   // 0..100 from the deck's progress file, -1 when never studied
+  char masteryText[6] = {};  // "100%"
 };
 
 enum class LoadResult { Ok, Empty, ReadFailed, OutOfMemory };

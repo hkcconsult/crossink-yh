@@ -49,7 +49,14 @@ bool isDue(uint8_t box, uint32_t round);
 // round never has fewer than min(5, deck size) cards.
 std::vector<uint16_t> pickSmartRound(const std::vector<CardProgress>& cards, uint32_t round, uint32_t& rng);
 
-// "rounds=N\n" then "KEYHEX box wrong right" per card that has any history.
+// How well a deck is known, 0..100: box 2 counts 25%, box 3 50%, box 4 75%,
+// box 5 100%; new and struggling cards (box 0, 1) count 0.
+int masteryPercent(const std::vector<CardProgress>& cards);
+// Same from a saved progress file without loading the deck (the file records
+// the deck size). -1 when the file has no deck size, e.g. never studied.
+int masteryPercentFromText(const char* text, size_t length);
+
+// "rounds=N\ncards=N\n" then "KEYHEX box wrong right" per card that has any history.
 std::string serializeProgress(const DeckProgress& progress);
 // Fills progress for the given deck: known keys get their stored values, other
 // cards start fresh. Unknown keys (cards removed from the deck) are dropped.

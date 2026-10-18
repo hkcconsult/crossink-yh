@@ -265,6 +265,13 @@ int main() {
     DeckProgress back = parseProgress(text.c_str(), text.size(), reordered);
     CHECK(back.rounds == 7 && back.cards[2].box == 3 && back.cards[2].wrong == 2 && back.cards[0].right == 1);
     CHECK(back.cards[1].box == 0 && back.cards[1].wrong == 0);
+    // Mastery: box 3 = 50% of one card out of three
+    CHECK(masteryPercent(dp.cards) == 16);
+    CHECK(masteryPercentFromText(text.c_str(), text.size()) == 16);
+    CHECK(masteryPercentFromText("rounds=2\n00000001 5 0 1\n", 23) == -1);  // no deck size
+    std::vector<CardProgress> all(4);
+    for (auto& c : all) c.box = 5;
+    CHECK(masteryPercent(all) == 100);
 
     SavedRound sr;
     sr.options.mode = StudyMode::MultipleChoice;

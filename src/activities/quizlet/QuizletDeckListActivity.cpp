@@ -133,6 +133,7 @@ void QuizletDeckListActivity::buildListScreen(UiApp::ScreenType& screen) {
   for (size_t i = 0; i < decks.size(); ++i) {
     fui::ListItem item;
     item.label = decks[i].title.c_str();
+    if (decks[i].mastery >= 0) item.value = decks[i].masteryText;
     item.actionValue = static_cast<int16_t>(items.size());
     items.push_back(item);
   }
@@ -205,5 +206,8 @@ void QuizletDeckListActivity::openDeck(const int index) {
     LOG_ERR("QZL", "OOM: QuizletOptionsActivity");
     return;
   }
-  startActivityForResult(std::move(study), [this](const ActivityResult&) { requestUpdate(); });
+  startActivityForResult(std::move(study), [this](const ActivityResult&) {
+    reload();  // the percentage known changes after studying
+    requestUpdate();
+  });
 }

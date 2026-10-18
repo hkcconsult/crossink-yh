@@ -277,12 +277,21 @@ void QuizletStudyActivity::finishSpeedRound() {
 
 // Returns true when the first front button was held long enough to stop.
 bool QuizletStudyActivity::handleStopLongPress() {
-  if (mappedInput.getPressedFrontButton() == 0) {
-    stopPressStartMs = millis();
+  // Poll the button state instead of waiting for the press edge: a slow render
+  // (CJK glyphs come from the SD card) can let that edge pass unseen, after
+  // which holding A never stopped the round.
+  if (!mappedInput.isFrontButtonPressed(0)) {
+    stopPressStartMs = 0;
+    return false;
+  }
+  if (stopPressStartMs == 0) {
+    // Count from the real press when the input layer knows it.
+    const unsigned long held = mappedInput.getHeldTime();
+    stopPressStartMs = millis() - std::min<unsigned long>(held, kStopHoldMs);
+    if (stopPressStartMs == 0) stopPressStartMs = 1;
     stopHandled = false;
   }
-  if (stopPressStartMs != 0 && !stopHandled && mappedInput.isFrontButtonPressed(0) &&
-      millis() - stopPressStartMs >= kStopHoldMs) {
+  if (!stopHandled && millis() - stopPressStartMs >= kStopHoldMs) {
     stopHandled = true;
     finish();
     return true;
