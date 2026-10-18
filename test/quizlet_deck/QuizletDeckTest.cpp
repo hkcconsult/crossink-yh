@@ -218,6 +218,12 @@ int main() {
   // A synced file the user deleted locally is downloaded again
   plan = planSync(remote, synced, {"Bio.txt"});
   CHECK(plan.download.size() == 3 && plan.unchanged == 0 && plan.remove.empty());
+  // CJK detection for the SD font swap
+  CHECK(containsCjk("\xE4\xBD\xA0\xE5\xA5\xBD"));         // 你好
+  CHECK(!containsCjk("n\xC7\x90 h\xC7\x8Eo \xC2\xB7 hello"));  // nǐ hǎo · hello
+  CHECK(!containsCjk("caf\xC3\xA9 \xE2\x80\x94"));          // café —
+  CHECK(containsCjk("x\xEF\xBC\x8C"));                        // fullwidth comma
+  CHECK(isCjkFamilyName("NotoSansCJK") && isCjkFamilyName("my-cjk-font") && !isCjkFamilyName("Literata"));
   printf(fails ? "%d FAILED\n" : "all tests passed\n", fails);
   return fails != 0;
 }

@@ -51,6 +51,12 @@ bool answerIsDefinition(AnswerWith answerWith, uint32_t& rng);
 size_t buildChoices(const std::vector<Card>& cards, uint16_t cardIndex, bool answerIsDefinition, uint32_t& rng,
                     uint16_t (&choices)[kMaxChoices], size_t& correctSlot);
 
+// True when text contains CJK ideographs, kana, CJK punctuation or fullwidth
+// forms, which the built-in fonts cannot draw.
+bool containsCjk(const std::string& text);
+// True for an installed SD font family meant for CJK ("NotoSansCJK", ...).
+bool isCjkFamilyName(const std::string& name);
+
 // Speed-round records, one "path<TAB>best" line per deck.
 unsigned recordFor(const std::string& recordsText, const std::string& deckPath);
 // Returns the updated records text with `best` stored for deckPath.

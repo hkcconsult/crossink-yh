@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "activities/Activity.h"
+#include "fontIds.h"
 #include "quizlet/QuizletDeckParser.h"
 #include "quizlet/QuizletDeckStore.h"
 #include "quizlet/QuizletSession.h"
@@ -44,6 +45,10 @@ class QuizletStudyActivity final : public Activity {
   quizlet::LoadResult loadResult = quizlet::LoadResult::Ok;
   int frontFont = 0;
   int backFont = 0;
+  int optionFont = UI_12_FONT_ID;   // multiple-choice options
+  int contextFont = UI_12_FONT_ID;  // prompt repeated above the answer
+  // True while an SD-card CJK family replaces the reader font for this deck.
+  bool usingCjkFont = false;
   uint32_t rng = 1;
 
   // Current card presentation.
@@ -73,6 +78,8 @@ class QuizletStudyActivity final : public Activity {
   unsigned speedSecondsLeft() const;
 
   void resolveCardFonts();
+  void activateCjkFontIfNeeded();
+  void drawScreen();
   void restart();
   void prepareCard();
   void answerChoice(int slot);

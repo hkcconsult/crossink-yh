@@ -1,6 +1,7 @@
 #include "QuizletStudyActivity.h"
 
 #include <Arduino.h>
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -10,6 +11,7 @@
 #include <utility>
 
 #include "MappedInputManager.h"
+#include "SdCardFontSystem.h"
 #include "components/CompactHeader.h"
 #include "components/TouchHeaderBackButton.h"
 #include "components/UITheme.h"
@@ -25,7 +27,6 @@ namespace {
 // load it on demand, see resolveCardFonts().
 constexpr unsigned kLexendFamily = 0;
 constexpr int kSmallFont = UI_10_FONT_ID;
-constexpr int kOptionFont = UI_12_FONT_ID;
 constexpr int kCardBorder = 2;
 constexpr int kCardPadding = 16;
 constexpr int kMaxCardLines = 8;
@@ -65,10 +66,44 @@ void QuizletStudyActivity::resolveCardFonts() {
 #endif
 }
 
+void QuizletStudyActivity::activateCjkFontIfNeeded() {
+  if (!std::any_of(cards.begin(), cards.end(), [](const quizlet::Card& card) {
+        return quizlet::containsCjk(card.term) || quizlet::containsCjk(card.definition);
+      })) {
+    return;
+  }
+  // Any installed SD family with "CJK" in its name, e.g. /.fonts/NotoSansCJK.
+  std::string familyName;
+  sdFontSystem.ensureRegistry();
+  for (const auto& family : sdFontSystem.registry().getFamilies()) {
+    if (quizlet::isCjkFamilyName(family.name)) {
+      familyName = family.name;
+      break;
+    }
+  }
+  sdFontSystem.releaseRegistry();
+  if (familyName.empty()) {
+    LOG_INF("QZL", "Deck has CJK text but no CJK font is installed");
+    return;
+  }
+  // Same swap the dictionary uses: one SD family stays resident, and the
+  // reader font comes back in onExit().
+  RenderLock lock;
+  const DictionaryFontActivation activation = sdFontSystem.activateDictionaryFont(renderer, familyName.c_str(), 16);
+  if (!activation.usingDictionaryFont || activation.fontId == 0) {
+    LOG_ERR("QZL", "Could not load CJK font %s", familyName.c_str());
+    return;
+  }
+  usingCjkFont = true;
+  frontFont = backFont = optionFont = contextFont = activation.fontId;
+  LOG_INF("QZL", "Using CJK font %s", familyName.c_str());
+}
+
 void QuizletStudyActivity::onEnter() {
   Activity::onEnter();
   resolveCardFonts();
   loadResult = quizlet::loadDeck(deckPath, cards);
+  if (loadResult == quizlet::LoadResult::Ok) activateCjkFontIfNeeded();
   rng = static_cast<uint32_t>(millis()) | 1u;
   if (options.mode == quizlet::StudyMode::Speed) speedRecord = quizlet::loadSpeedRecord(deckPath);
   restart();
@@ -79,6 +114,11 @@ void QuizletStudyActivity::onExit() {
   // Release the deck right away; it can be tens of KB on the ESP32-C3.
   cards.clear();
   cards.shrink_to_fit();
+  if (usingCjkFont) {
+    RenderLock lock;
+    sdFontSystem.restoreReaderFont(renderer);
+    usingCjkFont = false;
+  }
   Activity::onExit();
 }
 
@@ -358,7 +398,7 @@ void QuizletStudyActivity::renderFlipCard(const int top, const int bottom) const
     return;
   }
   // Back side: the prompt stays visible at the top for context, the answer below.
-  const int promptBottom = drawWrappedCentered(UI_12_FONT_ID, promptText().c_str(), innerX, innerWidth, innerTop,
+  const int promptBottom = drawWrappedCentered(contextFont, promptText().c_str(), innerX, innerWidth, innerTop,
                                                innerBottom, 2, true, false);
   const int dividerY = promptBottom + metrics.verticalSpacing / 2;
   renderer.drawLine(innerX, dividerY, innerX + innerWidth, dividerY, true);
@@ -406,7 +446,7 @@ void QuizletStudyActivity::renderChoiceCard(const int top, const int bottom) {
     const auto& card = cards[choices[i]];
     const std::string& text = answerIsDefinition ? card.definition : card.term;
     const int textX = side + letterWidth;
-    drawWrappedCentered(kOptionFont, text.c_str(), textX, width - letterWidth - kCardPadding, y + 4,
+    drawWrappedCentered(optionFont, text.c_str(), textX, width - letterWidth - kCardPadding, y + 4,
                         y + optionHeight - 4, 3, isCorrect && answered, true, !inverted);
     if (isChosenWrong) {
       // Strike through the wrong pick so it reads as wrong without color.
@@ -447,6 +487,35 @@ void QuizletStudyActivity::renderSpeedDone(const int top, const int bottom) cons
 }
 
 void QuizletStudyActivity::render(RenderLock&&) {
+  if (!usingCjkFont) {
+    drawScreen();
+    renderer.displayBuffer();
+    return;
+  }
+  // SD-card fonts only draw glyphs that were loaded beforehand: a scan pass
+  // collects the text, the glyphs are read from the card, then the real pass
+  // draws. The scope frees the glyph cache again after the refresh.
+  auto* fontCache = renderer.getFontCacheManager();
+  auto scope = fontCache->createPrewarmScope();
+  drawScreen();
+  // The scan pass measures text before its glyphs exist, so wrapping can cut a
+  // line short and skip characters. Record the full card texts as well.
+  if (loadResult == quizlet::LoadResult::Ok && !cards.empty() && !session.isFinished()) {
+    for (const auto style : {EpdFontFamily::REGULAR, EpdFontFamily::BOLD}) {
+      fontCache->recordText(promptText().c_str(), frontFont, style);
+      fontCache->recordText(answerText().c_str(), frontFont, style);
+      for (size_t i = 0; i < choiceCount; ++i) {
+        const auto& card = cards[choices[i]];
+        fontCache->recordText((answerIsDefinition ? card.definition : card.term).c_str(), frontFont, style);
+      }
+    }
+  }
+  scope.endScanAndPrewarm();
+  drawScreen();
+  renderer.displayBuffer();
+}
+
+void QuizletStudyActivity::drawScreen() {
   renderer.clearScreen();
   const bool touch = mappedInput.hasTouchHardware();
   if (touch) {
@@ -505,5 +574,4 @@ void QuizletStudyActivity::render(RenderLock&&) {
   } else {
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
-  renderer.displayBuffer();
 }

@@ -7,6 +7,7 @@
 - Multiple choice puts options A to D on the four front buttons; hold A to stop. Wrong options never overlap with the right answer, so category decks stay fair.
 - Speed round: answer as many as possible in 60 seconds and beat your record per deck.
 - Sync flashcard decks from the YH dashboard over Wi-Fi: put the downloaded sync.cfg in /quizlet and choose Sync with dashboard. Only new or changed decks are downloaded; decks deleted on the dashboard are removed, and decks you copied to the card yourself are left alone.
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
 
 ### Fixed
 
@@ -62,6 +63,8 @@
 - Library searches skip reading completion history for books that do not match the search.
 - Library scans count the books found so far and can be cancelled with Back or a tap, keeping the previous Library. A card with more books than the Library can hold now says so instead of reporting a generic failure.
 - Library keeps book metadata as each EPUB is read, so a cancelled or interrupted scan resumes where it stopped instead of starting over.
+
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
 
 ### Fixed
 
@@ -158,6 +161,8 @@
 - Rapid queued EPUB page turns defer text anti-aliasing and image loading until the final page, making intermediate turns faster.
 - Grayscale sleep screen images use the panel's direct grayscale waveform where supported, which folds the base frame into the grayscale pass instead of refreshing the screen separately first.
 
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
+
 ### Fixed
 
 - The web EPUB optimizer now accepts books that use standard Adobe or IDPF font obfuscation, while leaving DRM-protected books unchanged.
@@ -228,6 +233,8 @@
 - The undocumented X4 Pro power-button double-click frontlight toggle.
 - Built-in reader-font emoticons and hand gestures; SD-card fonts retain emoji fallback support.
 
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
+
 ### Fixed
 
 - Clipping highlights stay aligned after font changes, retain multi-paragraph text, and remain readable in Dark Mode. Selection stays on its final page, and browsing saved clippings responds reliably.
@@ -251,6 +258,8 @@
 - X4 Pro readers can lock the Home button while reading, with a Power-button shortcut to toggle it.
 - End-of-book suggestions can now be opened directly by tapping their rows on touch devices.
 - Quick Actions lets readers assign up to five favorite reader commands to one Power, Back, or Menu shortcut.
+
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
 
 ### Fixed
 
@@ -353,6 +362,8 @@
 
 - Teensy firmware builds are no longer produced for releases or release candidates.
 
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
+
 ### Fixed
 
 - EPUB render-mode and Safe Mode toast messages now clear reliably, even when the reader is low on memory.
@@ -398,6 +409,8 @@
 - The EPUB reader menu now splits the growing menu into 3 screens, labels per-book settings as `Book Options`, and avoids showing duplicate `Orientation` controls.
 - The `Inverted` sleep cover filter now flips Minimal and Reading Stats sleep screens to black text on a white background.
 
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
+
 ### Fixed
 
 - Quick Resume no longer shows a blank page after EPUB next-chapter indexing.
@@ -439,6 +452,8 @@
 - CrossInk settings now save to `/.crosspoint/crossink-settings.json`, with a one-time fallback migration from `/.crosspoint/settings.json`, so switching between firmware builds is less likely to reset preferences.
 - The X3 clock visibility setting is now phrased as `Hide Clock`, with existing `Show Clock` preferences migrated to the matching hide behavior.
 
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
+
 ### Fixed
 
 - RoundedRaff's date shown in settings now sits lower on X3 devices instead of overlapping the battery.
@@ -476,6 +491,8 @@
 - Already-cached EPUBs now open directly to the first page without an extra book-loading popup refresh.
 - Reader font-size choices now show point sizes like `10 pt` instead of names like `Tiny`.
 
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
+
 ### Fixed
 
 - Inverted reader menus now honor orientation-aware side-button navigation.
@@ -506,6 +523,8 @@
 - Book selection now shows a loading popup before EPUB indexing or cache loading begins.
 - Delayed the automatic finished-book prompt until the reader leaves the chapter where they reach 99%.
 
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
+
 ### Fixed
 
 - WiFi settings screen now keeps the displayed MAC address consistent with the router-visible WiFi address.
@@ -526,6 +545,8 @@
 - More detailed WiFi connection debug logs for scans, selected networks, status changes, disconnect reasons, and timeouts.
 - 9pt `Itty Bitty` reader font size, plus build flags for omitting Itty Bitty and Large reader font assets in size-constrained firmware variants.
 - In-reader confirmation message when a shortcut turns tilt-to-turn on or off.
+
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
 
 ### Fixed
 
@@ -572,6 +593,8 @@
 - Made the in-reader Reader Options menu include the same Reader settings and actions as Settings > Reader.
 - Split SD-card font descriptions and supported languages into separate lines in the font download screen.
 
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
+
 ### Fixed
 
 - Inline EPUB images no longer disappear in landscape when their bottom edge slightly overlaps the screen margin.
@@ -599,6 +622,8 @@
 - Made front reader long-press actions trigger when the hold delay is reached while normal page turns still trigger on release.
 - Used the fast EPUB spine/TOC indexing path for books with 300+ spine entries so heavily split books build `book.bin` faster on first open.
 - Allowed the web file manager and WebDAV to browse dot-prefixed hidden files when hidden files are enabled, matching the device file browser.
+
+- Flashcards with Chinese or Japanese text use an installed SD-card CJK font (any family with "CJK" in its name, for example NotoSansCJK) automatically.
 
 ### Fixed
 

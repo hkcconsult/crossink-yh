@@ -168,4 +168,31 @@ std::string withRecord(const std::string& recordsText, const std::string& deckPa
   return out;
 }
 
+bool containsCjk(const std::string& text) {
+  const size_t n = text.size();
+  for (size_t i = 0; i + 2 < n; ++i) {
+    const auto b0 = static_cast<unsigned char>(text[i]);
+    if ((b0 & 0xF0) != 0xE0) continue;  // CJK blocks are all 3-byte UTF-8
+    const auto b1 = static_cast<unsigned char>(text[i + 1]);
+    const auto b2 = static_cast<unsigned char>(text[i + 2]);
+    if ((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80) continue;
+    const uint32_t cp = ((b0 & 0x0Fu) << 12) | ((b1 & 0x3Fu) << 6) | (b2 & 0x3Fu);
+    if ((cp >= 0x3000 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFF00 && cp <= 0xFFEF)) {
+      return true;
+    }
+    i += 2;
+  }
+  return false;
+}
+
+bool isCjkFamilyName(const std::string& name) {
+  for (size_t i = 0; i + 3 <= name.size(); ++i) {
+    if (toupper(static_cast<unsigned char>(name[i])) == 'C' && toupper(static_cast<unsigned char>(name[i + 1])) == 'J' &&
+        toupper(static_cast<unsigned char>(name[i + 2])) == 'K') {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace quizlet
