@@ -122,8 +122,11 @@ bool QuizletSyncActivity::runSync() {
   updated = removed = unchanged = 0;
   progressIndex = progressTotal = 0;
 
+  // wolfSSL, like the OPDS book downloads: mbedTLS managed the first request
+  // but every following one failed on an X4, before reaching the server.
   HttpDownloader::DownloadOptions options;
   options.shouldCancel = [this]() { return pollCancel(); };
+  options.transport = HttpDownloader::Transport::WOLFSSL;
 
   // 1. Deck list. Saved to the card first so the TLS buffers are freed before parsing.
   Storage.remove(kListTmpPath);
@@ -173,6 +176,7 @@ bool QuizletSyncActivity::runSync() {
   HttpDownloader::DownloadOptions deckOptions;
   deckOptions.shouldCancel = [this]() { return pollCancel(); };
   deckOptions.stageAsPart = true;
+  deckOptions.transport = HttpDownloader::Transport::WOLFSSL;
   for (const auto& deck : plan.download) {
     {
       RenderLock lock(*this);
@@ -181,7 +185,14 @@ bool QuizletSyncActivity::runSync() {
     requestUpdateAndWait();
     const std::string path = std::string(quizlet::kDeckDir) + "/" + deck.file;
     const std::string url = deviceUrl(("/api/device/decks/" + deck.id + "/export.txt").c_str());
-    const auto deckResult = HttpDownloader::downloadToFile(url, path, nullptr, &cancelRequested, "", "", deckOptions);
+    HttpDownloader::DownloadError deckResult = HttpDownloader::HTTP_ERROR;
+    for (int attempt = 0; attempt < kAttempts && deckResult != HttpDownloader::OK; ++attempt) {
+      if (attempt > 0) delay(800);
+      LOG_INF("QZL", "Deck %s attempt %d: free=%u maxAlloc=%u", deck.file.c_str(), attempt + 1,
+              static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+      deckResult = HttpDownloader::downloadToFile(url, path, nullptr, &cancelRequested, "", "", deckOptions);
+      if (deckResult == HttpDownloader::ABORTED) break;
+    }
     if (deckResult == HttpDownloader::ABORTED) break;
     if (deckResult == HttpDownloader::OK) {
       ++updated;

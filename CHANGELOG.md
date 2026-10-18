@@ -11,6 +11,7 @@
 ### Fixed
 
 - Settings could no longer be reached in the Home menu once the Flashcards entry was shown.
+- Flashcard sync on the X4 fetched the deck list but then failed on every deck download. Sync now uses the same TLS connection as OPDS downloads and retries each deck once.
 
 ## [v1.6.1] - 2026-10-03
 
