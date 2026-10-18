@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 #include "MappedInputManager.h"
@@ -48,8 +49,9 @@ std::string urlEncode(const std::string& value) {
 }
 }  // namespace
 
-QuizletSyncActivity::QuizletSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : Activity("QuizletSync", renderer, mappedInput) {}
+QuizletSyncActivity::QuizletSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                         const quizlet::Library library)
+    : Activity("QuizletSync", renderer, mappedInput), library(library) {}
 
 void QuizletSyncActivity::setState(const State next) {
   {
@@ -60,7 +62,7 @@ void QuizletSyncActivity::setState(const State next) {
 }
 
 std::string QuizletSyncActivity::deviceUrl(const char* path) const {
-  return config.url + path + "?token=" + urlEncode(config.token);
+  return config.url + path + (strchr(path, '?') ? "&token=" : "?token=") + urlEncode(config.token);
 }
 
 void QuizletSyncActivity::onEnter() {
@@ -130,11 +132,14 @@ bool QuizletSyncActivity::runSync() {
   options.transport = HttpDownloader::Transport::WOLFSSL;
 
   // 1. Deck list. Saved to the card first so the TLS buffers are freed before parsing.
+  // The Chinese library asks only for the decks the dashboard files under "chinese".
+  const std::string folder = quizlet::librarySyncFolder(library);
+  const std::string listPath = folder.empty() ? "/api/device/decks.txt" : "/api/device/decks.txt?folder=" + folder;
   Storage.remove(kListTmpPath);
   HttpDownloader::DownloadError result = HttpDownloader::HTTP_ERROR;
   for (int attempt = 0; attempt < kAttempts && result != HttpDownloader::OK; ++attempt) {
     if (attempt > 0) delay(800);
-    result = HttpDownloader::downloadToFile(deviceUrl("/api/device/decks.txt"), kListTmpPath, nullptr, &cancelRequested,
+    result = HttpDownloader::downloadToFile(deviceUrl(listPath.c_str()), kListTmpPath, nullptr, &cancelRequested,
                                             "", "", options);
     if (result == HttpDownloader::ABORTED) return false;
   }
@@ -157,7 +162,7 @@ bool QuizletSyncActivity::runSync() {
   // failed upload does not fail the sync; the next sync sends it again.
   for (const auto& deck : remote) {
     if (pollCancel()) return false;
-    const std::string text = quizlet::loadProgressText(deck.file);
+    const std::string text = quizlet::loadProgressText(library, deck.file);
     if (text.empty()) continue;
     freeink::SecureHttpClient http;
     http.setInsecure();
@@ -175,8 +180,8 @@ bool QuizletSyncActivity::runSync() {
 
   // 3. Plan against what is on the card.
   std::vector<std::string> localFiles;
-  quizlet::listDeckFiles(localFiles);
-  std::vector<quizlet::SyncedEntry> synced = quizlet::loadSyncedState();
+  quizlet::listDeckFiles(library, localFiles);
+  std::vector<quizlet::SyncedEntry> synced = quizlet::loadSyncedState(library);
   const quizlet::SyncPlan plan = quizlet::planSync(remote, synced, localFiles);
   unchanged = static_cast<unsigned>(plan.unchanged);
   progressTotal = static_cast<unsigned>(plan.download.size());
@@ -204,7 +209,7 @@ bool QuizletSyncActivity::runSync() {
       ++progressIndex;
     }
     requestUpdateAndWait();
-    const std::string path = std::string(quizlet::kDeckDir) + "/" + deck.file;
+    const std::string path = std::string(quizlet::libraryDir(library)) + "/" + deck.file;
     const std::string url = deviceUrl(("/api/device/decks/" + deck.id + "/export.txt").c_str());
     HttpDownloader::DownloadError deckResult = HttpDownloader::HTTP_ERROR;
     for (int attempt = 0; attempt < kAttempts && deckResult != HttpDownloader::OK; ++attempt) {
@@ -231,7 +236,7 @@ bool QuizletSyncActivity::runSync() {
   // 5. Remove decks that were deleted on the dashboard (only ones we synced).
   if (!cancelRequested) {
     for (const auto& file : plan.remove) {
-      const std::string path = std::string(quizlet::kDeckDir) + "/" + file;
+      const std::string path = std::string(quizlet::libraryDir(library)) + "/" + file;
       if (Storage.remove(path.c_str())) ++removed;
     }
   } else {
@@ -239,7 +244,7 @@ bool QuizletSyncActivity::runSync() {
     for (const auto& file : plan.remove) nextState.push_back({file, ""});
   }
 
-  quizlet::saveSyncedState(nextState);
+  quizlet::saveSyncedState(library, nextState);
   return allOk && !cancelRequested;
 }
 

@@ -11,6 +11,7 @@
 #include "./FileBrowserActivity.h"
 #include "QuickActions.h"
 #include "activities/Activity.h"
+#include "quizlet/QuizletDeckStore.h"
 #include "activities/reader/BookReadingStats.h"
 #include "activities/reader/GlobalReadingStats.h"
 #include "components/CoverGridHomeUi.h"
@@ -49,7 +50,7 @@ class HomeActivity final : public Activity {
   bool hasBookmarks = false;
   bool hasClippings = false;
   bool hasOpdsServers = false;
-  bool hasQuizletDecks = false;
+  uint8_t studyMenus = 0;  // quizlet::kMenuFlashcards | quizlet::kMenuChinese
   bool minimalMenuOpen = false;
   bool minimalSuppressInitialFrontRelease = false;
   bool homeBookSwapLongPressHandled = false;
@@ -107,7 +108,7 @@ class HomeActivity final : public Activity {
   void onOpdsBrowserOpen();
   void onReadingStatsOpen();
   void onSavedItemsOpen();
-  void onQuizletOpen();
+  void onQuizletOpen(quizlet::Library library);
 
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image

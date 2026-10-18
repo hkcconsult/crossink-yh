@@ -20,8 +20,10 @@ namespace {
 constexpr fui::ActionId ACTION_ROW = 1;
 }  // namespace
 
-QuizletDeckListActivity::QuizletDeckListActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
+QuizletDeckListActivity::QuizletDeckListActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                                 const quizlet::Library library)
     : Activity("QuizletDeckList", renderer, mappedInput),
+      library(library),
       uiTarget(makeUiTarget(renderer)),
       app(uiTarget, uiTarget.deviceContext()) {}
 
@@ -153,9 +155,9 @@ void QuizletDeckListActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
   if (mappedInput.hasTouchHardware()) {
-    TouchHeaderBackButton::drawCompact(renderer, tr(STR_QUIZLET_TITLE));
+    TouchHeaderBackButton::drawCompact(renderer, title());
   } else {
-    CompactHeader::drawTitle(renderer, tr(STR_QUIZLET_TITLE));
+    CompactHeader::drawTitle(renderer, title());
   }
   uiReady = false;
   app.render();
@@ -169,7 +171,7 @@ void QuizletDeckListActivity::render(RenderLock&&) {
 }
 
 void QuizletDeckListActivity::reload() {
-  quizlet::listDecks(decks);
+  quizlet::listDecks(library, decks);
   hasSync = quizlet::hasSyncConfig();
 }
 
@@ -182,7 +184,7 @@ void QuizletDeckListActivity::activateRow(const int row) {
 }
 
 void QuizletDeckListActivity::openSync() {
-  auto sync = makeUniqueNoThrow<QuizletSyncActivity>(renderer, mappedInput);
+  auto sync = makeUniqueNoThrow<QuizletSyncActivity>(renderer, mappedInput, library);
   if (!sync) {
     LOG_ERR("QZL", "OOM: QuizletSyncActivity");
     return;

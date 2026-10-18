@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -13,7 +14,21 @@
 namespace quizlet {
 
 constexpr char kDeckDir[] = "/quizlet";
+constexpr char kChineseDir[] = "/chinese";
+// One sync.cfg serves both libraries.
 constexpr char kSyncConfigPath[] = "/quizlet/sync.cfg";
+
+// A library is a deck folder with its own Home entry, synced state and progress.
+enum class Library : uint8_t { Flashcards, Chinese };
+const char* libraryDir(Library library);
+// Dashboard folder name for the deck list ("" for the default flashcards).
+const char* librarySyncFolder(Library library);
+
+// Home entries to show (bit flags): Flashcards when /quizlet has decks or a
+// sync.cfg, Chinese when the /chinese folder exists.
+constexpr uint8_t kMenuFlashcards = 1;
+constexpr uint8_t kMenuChinese = 2;
+uint8_t studyMenus();
 
 struct DeckEntry {
   std::string title;  // file name without extension
@@ -22,12 +37,8 @@ struct DeckEntry {
 
 enum class LoadResult { Ok, Empty, ReadFailed, OutOfMemory };
 
-// Cheap check used by Home to decide whether to show the menu entry: true when
-// there is at least one deck or a dashboard sync configuration.
-bool hasDecks();
-
-// Lists deck files in kDeckDir, sorted by title (case-insensitive).
-void listDecks(std::vector<DeckEntry>& out);
+// Lists the library's deck files, sorted by title (case-insensitive).
+void listDecks(Library library, std::vector<DeckEntry>& out);
 
 // Reads and parses a deck. Files larger than kMaxDeckFileBytes are read up to
 // that size (the last, partial line is dropped).
@@ -44,18 +55,18 @@ void saveSpeedRecord(const std::string& deckPath, unsigned best);
 // Dashboard sync configuration (/quizlet/sync.cfg) and synced-deck bookkeeping.
 bool hasSyncConfig();
 bool loadSyncConfig(SyncConfig& out);
-std::vector<SyncedEntry> loadSyncedState();
-bool saveSyncedState(const std::vector<SyncedEntry>& entries);
-// File names (not paths) of the deck files currently in /quizlet.
-void listDeckFiles(std::vector<std::string>& out);
+std::vector<SyncedEntry> loadSyncedState(Library library);
+bool saveSyncedState(Library library, const std::vector<SyncedEntry>& entries);
+// File names (not paths) of the deck files currently in the library folder.
+void listDeckFiles(Library library, std::vector<std::string>& out);
 
-// Leitner progress per deck, in /quizlet/.progress/<deck file name>.
+// Leitner progress per deck, in <deck folder>/.progress/<deck file name>.
 DeckProgress loadProgress(const std::string& deckPath, const std::vector<Card>& deck);
 bool saveProgress(const std::string& deckPath, const DeckProgress& progress);
 // Raw progress file for a deck file name (for the dashboard upload); empty if none.
-std::string loadProgressText(const std::string& deckFileName);
+std::string loadProgressText(Library library, const std::string& deckFileName);
 
-// Unfinished round per deck, in /quizlet/.progress/<deck file name>.round.
+// Unfinished round per deck, in <deck folder>/.progress/<deck file name>.round.
 bool loadRound(const std::string& deckPath, SavedRound& out);
 bool saveRound(const std::string& deckPath, const SavedRound& round);
 void removeRound(const std::string& deckPath);

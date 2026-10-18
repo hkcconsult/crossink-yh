@@ -3,6 +3,7 @@
 #include <string>
 
 #include "activities/Activity.h"
+#include "quizlet/QuizletDeckStore.h"
 #include "quizlet/QuizletSync.h"
 
 // Connects to Wi-Fi and copies decks from the YH dashboard into /quizlet.
@@ -10,7 +11,7 @@
 // removed again. Decks put on the card by hand are left alone.
 class QuizletSyncActivity final : public Activity {
  public:
-  QuizletSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  QuizletSyncActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, quizlet::Library library);
 
   void onEnter() override;
   void onExit() override;
@@ -20,6 +21,7 @@ class QuizletSyncActivity final : public Activity {
   bool skipLoopDelay() override { return state == State::Syncing; }
 
  private:
+  quizlet::Library library;
   enum class State { Connecting, Syncing, Done, Failed, NoConfig };
 
   State state = State::Connecting;

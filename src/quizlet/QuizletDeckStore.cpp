@@ -15,7 +15,6 @@ constexpr int kMaxListedFiles = 200;
 constexpr char kStateDir[] = "/.crosspoint";
 constexpr char kOptionsPath[] = "/.crosspoint/quizlet_options.txt";
 constexpr char kRecordsPath[] = "/.crosspoint/quizlet_records.txt";
-constexpr char kSyncedPath[] = "/quizlet/.synced";
 // Both files are tiny; the records file holds one short line per deck.
 constexpr size_t kSmallFileBytes = 4096;
 
@@ -39,17 +38,28 @@ bool writeSmallFile(const char* path, const std::string& content, const char* di
   return true;
 }
 
-constexpr char kProgressDir[] = "/quizlet/.progress";
 // Up to 500 cards of about 20 bytes each.
 constexpr size_t kProgressFileBytes = 16 * 1024;
 
-std::string baseName(const std::string& path) {
-  const size_t slash = path.find_last_of('/');
-  return slash == std::string::npos ? path : path.substr(slash + 1);
+std::string syncedPath(const Library library) { return std::string(libraryDir(library)) + "/.synced"; }
+std::string progressDir(const Library library) { return std::string(libraryDir(library)) + "/.progress"; }
+
+// "/quizlet/Frans.txt" -> "/quizlet/.progress" and "Frans.txt".
+std::string progressDirOf(const std::string& deckPath) {
+  const size_t slash = deckPath.find_last_of('/');
+  return (slash == std::string::npos ? std::string() : deckPath.substr(0, slash)) + "/.progress";
+}
+std::string progressPathOf(const std::string& deckPath) {
+  const size_t slash = deckPath.find_last_of('/');
+  return progressDirOf(deckPath) + "/" + (slash == std::string::npos ? deckPath : deckPath.substr(slash + 1));
 }
 
-std::string progressPathFor(const std::string& deckFileName) {
-  return std::string(kProgressDir) + "/" + deckFileName;
+bool hasDeckFiles(const char* dir) {
+  if (!Storage.exists(dir)) return false;
+  for (const auto& name : Storage.listFiles(dir, kMaxListedFiles)) {
+    if (isDeckFileName(name.c_str())) return true;
+  }
+  return false;
 }
 
 // The synced list holds one short line per dashboard deck.
@@ -64,25 +74,33 @@ bool lessCaseInsensitive(const DeckEntry& a, const DeckEntry& b) {
 
 }  // namespace
 
-bool hasDecks() {
-  if (!Storage.exists(kDeckDir)) return false;
-  if (Storage.exists(kSyncConfigPath)) return true;
-  for (const auto& name : Storage.listFiles(kDeckDir, kMaxListedFiles)) {
-    if (isDeckFileName(name.c_str())) return true;
-  }
-  return false;
+const char* libraryDir(const Library library) {
+  return library == Library::Chinese ? kChineseDir : kDeckDir;
 }
 
-void listDecks(std::vector<DeckEntry>& out) {
+const char* librarySyncFolder(const Library library) { return library == Library::Chinese ? "chinese" : ""; }
+
+uint8_t studyMenus() {
+  uint8_t menus = 0;
+  if (Storage.exists(kDeckDir) && (Storage.exists(kSyncConfigPath) || hasDeckFiles(kDeckDir))) {
+    menus |= kMenuFlashcards;
+  }
+  // The Chinese folder alone is enough: a dashboard sync can fill it.
+  if (Storage.exists(kChineseDir)) menus |= kMenuChinese;
+  return menus;
+}
+
+void listDecks(const Library library, std::vector<DeckEntry>& out) {
   out.clear();
-  if (!Storage.exists(kDeckDir)) return;
-  const auto names = Storage.listFiles(kDeckDir, kMaxListedFiles);
+  const char* dir = libraryDir(library);
+  if (!Storage.exists(dir)) return;
+  const auto names = Storage.listFiles(dir, kMaxListedFiles);
   out.reserve(names.size());
   for (const auto& name : names) {
     if (!isDeckFileName(name.c_str())) continue;
     DeckEntry entry;
     entry.title = deckTitleFromFileName(name.c_str());
-    entry.path = std::string(kDeckDir) + "/" + name.c_str();
+    entry.path = std::string(dir) + "/" + name.c_str();
     out.push_back(std::move(entry));
   }
   std::sort(out.begin(), out.end(), lessCaseInsensitive);
@@ -128,24 +146,25 @@ bool loadSyncConfig(SyncConfig& out) {
   return parseSyncConfig(text.c_str(), text.size(), out);
 }
 
-std::vector<SyncedEntry> loadSyncedState() {
-  const std::string text = readSmallFile(kSyncedPath, kSyncedFileBytes);
+std::vector<SyncedEntry> loadSyncedState(const Library library) {
+  const std::string text = readSmallFile(syncedPath(library).c_str(), kSyncedFileBytes);
   return parseSyncedState(text.c_str(), text.size());
 }
 
-bool saveSyncedState(const std::vector<SyncedEntry>& entries) {
+bool saveSyncedState(const Library library, const std::vector<SyncedEntry>& entries) {
   const std::string text = serializeSyncedState(entries);
   if (text.size() >= kSyncedFileBytes) {
     LOG_ERR("QZL", "Synced list too large (%u bytes)", static_cast<unsigned>(text.size()));
     return false;
   }
-  return writeSmallFile(kSyncedPath, text, kDeckDir);
+  return writeSmallFile(syncedPath(library).c_str(), text, libraryDir(library));
 }
 
-void listDeckFiles(std::vector<std::string>& out) {
+void listDeckFiles(const Library library, std::vector<std::string>& out) {
   out.clear();
-  if (!Storage.exists(kDeckDir)) return;
-  for (const auto& name : Storage.listFiles(kDeckDir, kMaxListedFiles)) {
+  const char* dir = libraryDir(library);
+  if (!Storage.exists(dir)) return;
+  for (const auto& name : Storage.listFiles(dir, kMaxListedFiles)) {
     if (isDeckFileName(name.c_str())) out.emplace_back(name.c_str());
   }
 }
@@ -169,29 +188,30 @@ void saveSpeedRecord(const std::string& deckPath, const unsigned best) {
 }
 
 DeckProgress loadProgress(const std::string& deckPath, const std::vector<Card>& deck) {
-  const std::string text = readSmallFile(progressPathFor(baseName(deckPath)).c_str(), kProgressFileBytes);
+  const std::string text = readSmallFile(progressPathOf(deckPath).c_str(), kProgressFileBytes);
   return parseProgress(text.c_str(), text.size(), deck);
 }
 
 bool saveProgress(const std::string& deckPath, const DeckProgress& progress) {
-  return writeSmallFile(progressPathFor(baseName(deckPath)).c_str(), serializeProgress(progress), kProgressDir);
+  return writeSmallFile(progressPathOf(deckPath).c_str(), serializeProgress(progress), progressDirOf(deckPath).c_str());
 }
 
-std::string loadProgressText(const std::string& deckFileName) {
-  return readSmallFile(progressPathFor(deckFileName).c_str(), kProgressFileBytes);
+std::string loadProgressText(const Library library, const std::string& deckFileName) {
+  return readSmallFile((progressDir(library) + "/" + deckFileName).c_str(), kProgressFileBytes);
 }
 
 bool loadRound(const std::string& deckPath, SavedRound& out) {
-  const std::string text = readSmallFile((progressPathFor(baseName(deckPath)) + ".round").c_str(), kProgressFileBytes);
+  const std::string text = readSmallFile((progressPathOf(deckPath) + ".round").c_str(), kProgressFileBytes);
   return parseRound(text.c_str(), text.size(), out);
 }
 
 bool saveRound(const std::string& deckPath, const SavedRound& round) {
-  return writeSmallFile((progressPathFor(baseName(deckPath)) + ".round").c_str(), serializeRound(round), kProgressDir);
+  return writeSmallFile((progressPathOf(deckPath) + ".round").c_str(), serializeRound(round),
+                        progressDirOf(deckPath).c_str());
 }
 
 void removeRound(const std::string& deckPath) {
-  const std::string path = progressPathFor(baseName(deckPath)) + ".round";
+  const std::string path = progressPathOf(deckPath) + ".round";
   if (Storage.exists(path.c_str())) Storage.remove(path.c_str());
 }
 

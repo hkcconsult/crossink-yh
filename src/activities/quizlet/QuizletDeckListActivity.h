@@ -6,6 +6,8 @@
 #include <atomic>
 #include <vector>
 
+#include <I18n.h>
+
 #include "activities/Activity.h"
 #include "quizlet/QuizletDeckStore.h"
 #include "util/ButtonNavigator.h"
@@ -13,7 +15,8 @@
 // Lists flashcard decks from /quizlet on the SD card and opens one to study.
 class QuizletDeckListActivity final : public Activity {
  public:
-  QuizletDeckListActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  QuizletDeckListActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                          quizlet::Library library = quizlet::Library::Flashcards);
 
   void onEnter() override;
   void onExit() override;
@@ -21,6 +24,7 @@ class QuizletDeckListActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
+  quizlet::Library library;
   std::vector<quizlet::DeckEntry> decks;
   bool hasSync = false;  // first row is "Sync with dashboard" when /quizlet/sync.cfg exists
   ButtonNavigator buttonNavigator;
@@ -37,6 +41,9 @@ class QuizletDeckListActivity final : public Activity {
   void buildListScreen(UiApp::ScreenType& screen);
   int rowCount() const { return static_cast<int>(decks.size()) + (hasSync ? 1 : 0); }
   void reload();
+  const char* title() const {
+    return library == quizlet::Library::Chinese ? tr(STR_CHINESE_TITLE) : tr(STR_QUIZLET_TITLE);
+  }
   void activateRow(int row);
   void openSync();
   void openDeck(int index);
