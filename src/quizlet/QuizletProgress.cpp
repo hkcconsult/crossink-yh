@@ -62,6 +62,8 @@ void recordAnswer(CardProgress& progress, const bool knewIt, const bool firstAtt
   progress.box = progress.box == 0 ? 2 : static_cast<uint8_t>(std::min<int>(progress.box + 1, kMaxBox));
 }
 
+void markHard(CardProgress& progress) { progress.box = 1; }
+
 bool isDue(const uint8_t box, const uint32_t round) {
   if (box <= 1) return true;
   const uint32_t every = 1u << (box - 1);  // 2, 4, 8, 16

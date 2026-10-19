@@ -241,9 +241,15 @@ void QuizletStudyActivity::prepareCard() {
   choiceUnavailable = choiceCount == 0;
 }
 
-void QuizletStudyActivity::advance(const bool knewIt) {
+void QuizletStudyActivity::advance(const Answer answer) {
+  const bool knewIt = answer == Answer::Known;
   if (!session.isFinished() && session.currentCard() < progress.cards.size()) {
-    quizlet::recordAnswer(progress.cards[session.currentCard()], knewIt, session.isFirstAttempt());
+    quizlet::CardProgress& card = progress.cards[session.currentCard()];
+    if (answer == Answer::Hard) {
+      quizlet::markHard(card);
+    } else {
+      quizlet::recordAnswer(card, knewIt, session.isFirstAttempt());
+    }
     progressDirty = true;
     ++answeredInRound;
   }
@@ -360,6 +366,9 @@ void QuizletStudyActivity::loop() {
 
 void QuizletStudyActivity::loopFlip(const bool tapped, const MappedInputManager::SwipeDir swipe) {
   using Button = MappedInputManager::Button;
+  // The side buttons (Up/Down) can also report PageBack/PageForward, so read
+  // them first: on the answer side they mark the card hard.
+  const bool side = mappedInput.wasReleased(Button::Up) || mappedInput.wasReleased(Button::Down);
   const bool next = wasAnyReleased(mappedInput, Button::Right, Button::Down, Button::PageForward);
   const bool previous = wasAnyReleased(mappedInput, Button::Left, Button::Up, Button::PageBack);
 
@@ -374,6 +383,8 @@ void QuizletStudyActivity::loopFlip(const bool tapped, const MappedInputManager:
   if (mappedInput.wasReleased(Button::Confirm) || tapped) {
     session.flip();
     requestUpdate();
+  } else if (side) {
+    advance(Answer::Hard);
   } else if (next || swipe == MappedInputManager::SwipeDir::Right) {
     advance(true);
   } else if (previous || swipe == MappedInputManager::SwipeDir::Left) {
@@ -393,6 +404,11 @@ void QuizletStudyActivity::loopChoice(const bool tapped, const int tapX, const i
     const bool any = tapped || mappedInput.wasReleased(Button::Confirm) ||
                      wasAnyReleased(mappedInput, Button::Left, Button::Right, Button::Up) ||
                      wasAnyReleased(mappedInput, Button::Down, Button::PageBack, Button::PageForward);
+    if (mappedInput.wasReleased(Button::Up) || mappedInput.wasReleased(Button::Down)) {
+      // Side button on the feedback screen: right or not, ask it again.
+      advance(static_cast<size_t>(chosenSlot) == correctSlot ? Answer::Hard : Answer::Again);
+      return;
+    }
     if (any) advance(static_cast<size_t>(chosenSlot) == correctSlot);
     return;
   }
@@ -495,13 +511,20 @@ void QuizletStudyActivity::renderFlipCard(const int top, const int bottom) const
                         true);
     return;
   }
-  // Back side: the prompt stays visible at the top for context, the answer below.
+  // Back side: the prompt stays visible at the top for context, the answer below,
+  // and a reminder that a side button marks the card hard.
+  if (!mappedInput.hasTouchHardware()) {
+    const int hintHeight = renderer.getLineHeight(kSmallFont);
+    renderer.drawCenteredText(kSmallFont, innerBottom - hintHeight, tr(STR_QUIZLET_SIDE_HARD));
+  }
   const int promptBottom = drawWrappedCentered(contextFont, promptText().c_str(), innerX, innerWidth, innerTop,
                                                innerBottom, 2, true, false);
   const int dividerY = promptBottom + metrics.verticalSpacing / 2;
   renderer.drawLine(innerX, dividerY, innerX + innerWidth, dividerY, true);
+  const int answerBottom =
+      mappedInput.hasTouchHardware() ? innerBottom : innerBottom - renderer.getLineHeight(kSmallFont);
   drawWrappedCentered(backFont, answerText().c_str(), innerX, innerWidth, dividerY + metrics.verticalSpacing,
-                      innerBottom, kMaxCardLines, false, true);
+                      answerBottom, kMaxCardLines, false, true);
 }
 
 void QuizletStudyActivity::renderChoiceCard(const int top, const int bottom) {
@@ -656,8 +679,13 @@ void QuizletStudyActivity::drawScreen() {
     labels = mappedInput.mapLabels(back, tr(STR_QUIZLET_RESTART), nullptr, nullptr);
   } else if (usesChoices()) {
     const bool open = chosenSlot < 0;
-    if (open && !touch) {
-      // Leave room for the stop hint above the button labels.
+    if (!touch && options.mode != quizlet::StudyMode::Speed) {
+      // Leave room for a hint above the button labels: how to stop while the
+      // question is open, how to mark the card hard once it is answered.
+      bottom -= renderer.getLineHeight(kSmallFont) + metrics.verticalSpacing / 2;
+      renderer.drawCenteredText(kSmallFont, bottom + metrics.verticalSpacing / 2,
+                                open ? tr(STR_QUIZLET_HOLD_TO_STOP) : tr(STR_QUIZLET_SIDE_HARD));
+    } else if (open && !touch) {
       bottom -= renderer.getLineHeight(kSmallFont) + metrics.verticalSpacing / 2;
       renderer.drawCenteredText(kSmallFont, bottom + metrics.verticalSpacing / 2, tr(STR_QUIZLET_HOLD_TO_STOP));
     }

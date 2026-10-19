@@ -40,6 +40,10 @@ uint32_t cardKey(const Card& card);
 // answer sends it back to box 1.
 void recordAnswer(CardProgress& progress, bool knewIt, bool firstAttempt);
 
+// Marked hard by the learner even though the answer was right: back to box 1
+// so smart rounds ask it first again. Not counted as wrong.
+void markHard(CardProgress& progress);
+
 // Box 0 and 1 are asked every round, box 2 every 2nd, box 3 every 4th, ...
 bool isDue(uint8_t box, uint32_t round);
 

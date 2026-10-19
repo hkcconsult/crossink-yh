@@ -94,7 +94,11 @@ class QuizletStudyActivity final : public Activity {
   void restart();
   void prepareCard();
   void answerChoice(int slot);
-  void advance(bool knewIt);
+  // Hard: the learner knew it but wants it back, later in this round and first
+  // in the next smart rounds.
+  enum class Answer : uint8_t { Again, Known, Hard };
+  void advance(Answer answer);
+  void advance(bool knewIt) { advance(knewIt ? Answer::Known : Answer::Again); }
   void finishSpeedRound();
   bool handleStopLongPress();
 

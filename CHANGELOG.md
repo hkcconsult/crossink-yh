@@ -8,6 +8,7 @@
 - Speed round: answer as many as possible in 60 seconds and beat your record per deck.
 - Sync flashcard decks from the YH dashboard over Wi-Fi: put the downloaded sync.cfg in /quizlet and choose Sync with dashboard. Only new or changed decks are downloaded; decks deleted on the dashboard are removed, and decks you copied to the card yourself are left alone.
 - Smart order for flashcards (Leitner boxes): cards you get wrong come back first and every round, cards you know well come back less often. Progress is kept per deck in /quizlet/.progress and sent to the dashboard on sync, which lists the hard cards.
+- A side button marks a flashcard hard, even when you knew it: it comes back later in the round and first in the next smart rounds.
 - The deck list shows how well each deck is known as a percentage.
 - An unfinished flashcard round is saved when you leave it; Continue picks it up again from the options screen.
 - Chinese gets its own Home entry for decks in /chinese (shown when that folder exists). Its Sync with dashboard fetches only the decks the dashboard files under Chinese.
