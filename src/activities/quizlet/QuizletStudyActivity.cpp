@@ -31,6 +31,9 @@ constexpr int kCardBorder = 2;
 constexpr int kCardPadding = 16;
 constexpr int kMaxCardLines = 8;
 constexpr int kOptionGap = 8;
+// Option lines sit closer together than body text so two lines fit in a box;
+// the CJK font in particular has a tall line height.
+constexpr int kOptionLineSpacing = 78;
 constexpr unsigned long kStopHoldMs = 800;
 constexpr unsigned kSpeedRefreshSeconds = 10;
 // Physical front-button slots as reported by getPressed/ReleasedFrontButton().
@@ -417,9 +420,10 @@ void QuizletStudyActivity::loopChoice(const bool tapped, const int tapX, const i
 
 int QuizletStudyActivity::drawWrappedCentered(const int fontId, const char* text, const int x, const int width,
                                               const int top, const int bottom, const int maxLines, const bool bold,
-                                              const bool verticallyCenter, const bool black) const {
+                                              const bool verticallyCenter, const bool black,
+                                              const int lineSpacingPercent) const {
   const auto style = bold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
-  const int lineHeight = renderer.getLineHeight(fontId);
+  const int lineHeight = renderer.getLineHeight(fontId) * lineSpacingPercent / 100;
   const int fitLines = lineHeight > 0 ? std::max(1, (bottom - top) / lineHeight) : 1;
   const auto lines = renderer.wrappedText(fontId, text, width, std::min(maxLines, fitLines), style);
   const int blockHeight = static_cast<int>(lines.size()) * lineHeight;
@@ -510,7 +514,9 @@ void QuizletStudyActivity::renderChoiceCard(const int top, const int bottom) {
   if (areaHeight <= 4 * kCardPadding) return;
 
   // Prompt card takes a bit over a third; options share the rest.
-  const int promptHeight = areaHeight * 36 / 100;
+  // The prompt is usually a word or a few characters; give the options the
+  // room so a longer answer can wrap to two lines.
+  const int promptHeight = areaHeight * 26 / 100;
   renderer.drawRect(side, areaTop, width, promptHeight, kCardBorder, true);
   drawWrappedCentered(frontFont, promptText().c_str(), side + kCardPadding, width - 2 * kCardPadding,
                       areaTop + kCardPadding / 2, areaTop + promptHeight - kCardPadding / 2, 4, true, true);
@@ -539,8 +545,8 @@ void QuizletStudyActivity::renderChoiceCard(const int top, const int bottom) {
     const auto& card = cards[choices[i]];
     const std::string& text = answerIsDefinition ? card.definition : card.term;
     const int textX = side + letterWidth;
-    drawWrappedCentered(optionFont, text.c_str(), textX, width - letterWidth - kCardPadding, y + 4,
-                        y + optionHeight - 4, 3, isCorrect && answered, true, !inverted);
+    drawWrappedCentered(optionFont, text.c_str(), textX, width - letterWidth - kCardPadding, y + 2,
+                        y + optionHeight - 2, 3, isCorrect && answered, true, !inverted, kOptionLineSpacing);
     if (isChosenWrong) {
       // Strike through the wrong pick so it reads as wrong without color.
       const int midY = y + optionHeight / 2;

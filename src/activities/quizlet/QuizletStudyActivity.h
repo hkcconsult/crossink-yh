@@ -110,5 +110,5 @@ class QuizletStudyActivity final : public Activity {
   // Draws word-wrapped, horizontally centered text inside [top, bottom).
   // Returns the y below the last line.
   int drawWrappedCentered(int fontId, const char* text, int x, int width, int top, int bottom, int maxLines, bool bold,
-                          bool verticallyCenter, bool black = true) const;
+                          bool verticallyCenter, bool black = true, int lineSpacingPercent = 100) const;
 };
