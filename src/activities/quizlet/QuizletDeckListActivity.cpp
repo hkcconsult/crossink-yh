@@ -8,6 +8,7 @@
 #include "MappedInputManager.h"
 #include "QuizletOptionsActivity.h"
 #include "QuizletSyncActivity.h"
+#include "QuizletTodayActivity.h"
 #include "components/CompactHeader.h"
 #include "components/TouchHeaderBackButton.h"
 #include "components/UITheme.h"
@@ -130,6 +131,12 @@ void QuizletDeckListActivity::buildListScreen(UiApp::ScreenType& screen) {
     item.actionValue = 0;
     items.push_back(item);
   }
+  if (hasToday) {
+    fui::ListItem item;
+    item.label = tr(STR_QUIZLET_TODAY_ROW);
+    item.actionValue = static_cast<int16_t>(items.size());
+    items.push_back(item);
+  }
   for (size_t i = 0; i < decks.size(); ++i) {
     fui::ListItem item;
     item.label = decks[i].title.c_str();
@@ -174,6 +181,7 @@ void QuizletDeckListActivity::render(RenderLock&&) {
 void QuizletDeckListActivity::reload() {
   quizlet::listDecks(library, decks);
   hasSync = quizlet::hasSyncConfig();
+  hasToday = library == quizlet::Library::Flashcards && quizlet::hasTodayPlan();
 }
 
 void QuizletDeckListActivity::activateRow(const int row) {
@@ -181,7 +189,11 @@ void QuizletDeckListActivity::activateRow(const int row) {
     openSync();
     return;
   }
-  openDeck(row - (hasSync ? 1 : 0));
+  if (hasToday && row == (hasSync ? 1 : 0)) {
+    openToday();
+    return;
+  }
+  openDeck(row - extraRows());
 }
 
 void QuizletDeckListActivity::openSync() {
@@ -197,6 +209,15 @@ void QuizletDeckListActivity::openSync() {
     topIndex = 0;
     requestUpdate();
   });
+}
+
+void QuizletDeckListActivity::openToday() {
+  auto today = makeUniqueNoThrow<QuizletTodayActivity>(renderer, mappedInput);
+  if (!today) {
+    LOG_ERR("QZL", "OOM: QuizletTodayActivity");
+    return;
+  }
+  startActivityForResult(std::move(today), [this](const ActivityResult&) { requestUpdate(); });
 }
 
 void QuizletDeckListActivity::openDeck(const int index) {

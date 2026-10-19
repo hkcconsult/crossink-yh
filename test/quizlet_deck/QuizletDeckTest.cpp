@@ -9,6 +9,7 @@
 #include "quizlet/QuizletSession.h"
 #include "quizlet/QuizletStudy.h"
 #include "quizlet/QuizletSync.h"
+#include "quizlet/QuizletToday.h"
 using namespace quizlet;
 static int fails = 0;  // counted so every failing check is reported
 #define CHECK(c)                                         \
@@ -295,6 +296,18 @@ int main() {
     CHECK(s.pendingCards().size() == 1 && s.pendingCards()[0].second == 3);
     s.startWith({2, 0}, 6);
     CHECK(s.cardCount() == 2 && s.currentCard() == 2);
+  }
+  // Planner summary from the dashboard
+  {
+    const char* t =
+        "date\t2026-10-19\ntoday\t10:15 Wiskunde 3.2\r\ntoday\tTOETS Frans\ntomorrow\tEngels blz. 34\n"
+        "test\t2026-10-22\t3\tToets Frans H3\t16%\ntest\t2026-11-05\t17\tPW ak\nrommel\n";
+    TodayPlan plan = parseTodayPlan(t, strlen(t));
+    CHECK(plan.date == "2026-10-19" && plan.today.size() == 2 && plan.today[0] == "10:15 Wiskunde 3.2");
+    CHECK(plan.tomorrow.size() == 1 && plan.tests.size() == 2);
+    CHECK(plan.tests[0].daysLeft == 3 && plan.tests[0].mastery == "16%" && plan.tests[1].mastery.empty());
+    CHECK(shortDate("2026-10-19") == "19-10" && shortDate("x") == "x");
+    CHECK(parseTodayPlan(nullptr, 0).today.empty());
   }
   printf(fails ? "%d FAILED\n" : "all tests passed\n", fails);
   return fails != 0;

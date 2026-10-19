@@ -205,6 +205,14 @@ std::string loadProgressText(const Library library, const std::string& deckFileN
   return readSmallFile((progressDir(library) + "/" + deckFileName).c_str(), kProgressFileBytes);
 }
 
+bool hasTodayPlan() { return Storage.exists(kTodayPath); }
+
+bool loadTodayPlan(TodayPlan& out) {
+  const std::string text = readSmallFile(kTodayPath, kMaxTodayBytes);
+  out = parseTodayPlan(text.c_str(), text.size());
+  return !out.date.empty();
+}
+
 bool loadRound(const std::string& deckPath, SavedRound& out) {
   const std::string text = readSmallFile((progressPathOf(deckPath) + ".round").c_str(), kProgressFileBytes);
   return parseRound(text.c_str(), text.size(), out);

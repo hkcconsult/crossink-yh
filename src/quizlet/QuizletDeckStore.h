@@ -8,6 +8,7 @@
 #include "QuizletProgress.h"
 #include "QuizletStudy.h"
 #include "QuizletSync.h"
+#include "QuizletToday.h"
 
 // SD-card side of the flashcard feature. Decks live as plain text files in
 // /quizlet on the SD card (Quizlet export: "term<TAB>definition" per line).
@@ -61,6 +62,11 @@ std::vector<SyncedEntry> loadSyncedState(Library library);
 bool saveSyncedState(Library library, const std::vector<SyncedEntry>& entries);
 // File names (not paths) of the deck files currently in the library folder.
 void listDeckFiles(Library library, std::vector<std::string>& out);
+
+// Planner summary saved at sync time (/quizlet/.today.txt).
+constexpr char kTodayPath[] = "/quizlet/.today.txt";
+bool hasTodayPlan();
+bool loadTodayPlan(TodayPlan& out);
 
 // Leitner progress per deck, in <deck folder>/.progress/<deck file name>.
 DeckProgress loadProgress(const std::string& deckPath, const std::vector<Card>& deck);

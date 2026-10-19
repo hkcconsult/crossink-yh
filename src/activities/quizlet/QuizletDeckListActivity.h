@@ -26,7 +26,8 @@ class QuizletDeckListActivity final : public Activity {
  private:
   quizlet::Library library;
   std::vector<quizlet::DeckEntry> decks;
-  bool hasSync = false;  // first row is "Sync with dashboard" when /quizlet/sync.cfg exists
+  bool hasSync = false;   // first row is "Sync with dashboard" when /quizlet/sync.cfg exists
+  bool hasToday = false;  // then "Today and tests" once a sync brought the planner
   ButtonNavigator buttonNavigator;
   int selectedIndex = 0;
   using UiApp = freeink::ui::FreeInkApp<20, 4>;
@@ -39,12 +40,14 @@ class QuizletDeckListActivity final : public Activity {
   static void listScreen(UiApp::ScreenType& screen, void* user);
   static void onRowEvent(const freeink::ui::ActionEvent& event, void* user);
   void buildListScreen(UiApp::ScreenType& screen);
-  int rowCount() const { return static_cast<int>(decks.size()) + (hasSync ? 1 : 0); }
+  int extraRows() const { return (hasSync ? 1 : 0) + (hasToday ? 1 : 0); }
+  int rowCount() const { return static_cast<int>(decks.size()) + extraRows(); }
   void reload();
   const char* title() const {
     return library == quizlet::Library::Chinese ? tr(STR_CHINESE_TITLE) : tr(STR_QUIZLET_TITLE);
   }
   void activateRow(int row);
   void openSync();
+  void openToday();
   void openDeck(int index);
 };

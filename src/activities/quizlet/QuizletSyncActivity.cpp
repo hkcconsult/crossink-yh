@@ -245,6 +245,18 @@ bool QuizletSyncActivity::runSync() {
   }
 
   quizlet::saveSyncedState(library, nextState);
+
+  // 6. Planner summary for the "Today and tests" screen. Optional: an older
+  // dashboard without the planner simply leaves the previous file in place.
+  if (library == quizlet::Library::Flashcards && !cancelRequested) {
+    HttpDownloader::DownloadOptions todayOptions;
+    todayOptions.shouldCancel = [this]() { return pollCancel(); };
+    todayOptions.transport = HttpDownloader::Transport::WOLFSSL;
+    todayOptions.stageAsPart = true;
+    const auto todayResult = HttpDownloader::downloadToFile(deviceUrl("/api/device/today.txt"), quizlet::kTodayPath,
+                                                            nullptr, &cancelRequested, "", "", todayOptions);
+    if (todayResult != HttpDownloader::OK) LOG_ERR("QZL", "Planner download failed (%d)", static_cast<int>(todayResult));
+  }
   return allOk && !cancelRequested;
 }
 
