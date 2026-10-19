@@ -172,7 +172,8 @@ void QuizletStudyActivity::onExit() {
   cards.clear();
   cards.shrink_to_fit();
   if (usingCjkFont) {
-    RenderLock lock;
+    // No RenderLock here: ActivityManager already holds the (non-recursive)
+    // render mutex while it calls onExit(), so taking it again froze the X4.
     sdFontSystem.restoreReaderFont(renderer);
     usingCjkFont = false;
   }

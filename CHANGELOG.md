@@ -15,7 +15,7 @@
 
 ### Fixed
 
-- Holding A to stop a multiple-choice or speed round did not always work with Chinese decks: a slow render could hide the press.
+- Leaving a Chinese flashcard round (Back or holding A) froze the reader: restoring the reading font took the render lock a second time.
 - Settings could no longer be reached in the Home menu once the Flashcards entry was shown.
 - Flashcard sync on the X4 fetched the deck list but then failed on every deck download. Sync now uses the same TLS connection as OPDS downloads and retries each deck once.
 
