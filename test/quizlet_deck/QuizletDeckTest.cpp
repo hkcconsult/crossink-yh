@@ -221,10 +221,10 @@ int main() {
   plan = planSync(remote, synced, {"Bio.txt"});
   CHECK(plan.download.size() == 3 && plan.unchanged == 0 && plan.remove.empty());
   // CJK detection for the SD font swap
-  CHECK(containsCjk("\xE4\xBD\xA0\xE5\xA5\xBD"));         // 你好
+  CHECK(containsCjk("\xE4\xBD\xA0\xE5\xA5\xBD"));              // 你好
   CHECK(!containsCjk("n\xC7\x90 h\xC7\x8Eo \xC2\xB7 hello"));  // nǐ hǎo · hello
-  CHECK(!containsCjk("caf\xC3\xA9 \xE2\x80\x94"));          // café —
-  CHECK(containsCjk("x\xEF\xBC\x8C"));                        // fullwidth comma
+  CHECK(!containsCjk("caf\xC3\xA9 \xE2\x80\x94"));             // café —
+  CHECK(containsCjk("x\xEF\xBC\x8C"));                         // fullwidth comma
   CHECK(isCjkFamilyName("NotoSansCJK") && isCjkFamilyName("my-cjk-font") && !isCjkFamilyName("Literata"));
   // Leitner progress
   {
@@ -296,6 +296,31 @@ int main() {
     CHECK(s.pendingCards().size() == 1 && s.pendingCards()[0].second == 3);
     s.startWith({2, 0}, 6);
     CHECK(s.cardCount() == 2 && s.currentCard() == 2);
+  }
+  // Two-way progress sync
+  {
+    const char* cur = "rounds=4\ncards=3\n0000000a 3 0 2\n0000000b 1 1 0\n0000000c 2 0 1\n";
+    const char* base = "0000000a 3 0 2\n0000000b 2 0 1\n";
+    CHECK(roundsFromText(cur, strlen(cur)) == 4);
+    const std::string delta = progressDelta(cur, strlen(cur), base, strlen(base));
+    CHECK(delta == "0000000b 1 1 0 2 0 1\n0000000c 2 0 1 0 0 0\n");
+    CHECK(progressDelta(base, strlen(base), base, strlen(base)).empty());
+
+    std::vector<ServerDeckProgress> decks;
+    ServerProgressReader reader;
+    const std::string server = "deck\t3\t10\n0000000a 4 0 3\r\n0000000b 1 2 0\ndeck\t7\t2\ndeck\t9\t5\n0000000f 5 0 6";
+    auto collect = [&decks](const ServerDeckProgress& d) { decks.push_back(d); };
+    // Feed in awkward chunks to prove lines split across chunks are handled.
+    for (size_t i = 0; i < server.size(); i += 7)
+      reader.feed(server.data() + i, std::min<size_t>(7, server.size() - i), collect);
+    reader.finish(collect);
+    CHECK(decks.size() == 3);
+    CHECK(decks[0].id == "3" && decks[0].cards == 10 && decks[0].body == "0000000a 4 0 3\n0000000b 1 2 0\n");
+    CHECK(decks[1].id == "7" && decks[1].body.empty());
+    CHECK(decks[2].id == "9" && decks[2].body == "0000000f 5 0 6\n");
+    const std::string file = syncedProgressFile(4, 10, decks[0].body);
+    CHECK(file == "rounds=4\ncards=10\n0000000a 4 0 3\n0000000b 1 2 0\n");
+    CHECK(masteryPercentFromText(file.c_str(), file.size()) == 7);  // (75 + 0) / 10
   }
   // Planner summary from the dashboard
   {

@@ -32,9 +32,9 @@ constexpr uint8_t kMenuChinese = 2;
 uint8_t studyMenus();
 
 struct DeckEntry {
-  std::string title;  // file name without extension
-  std::string path;   // full SD path
-  int mastery = -1;   // 0..100 from the deck's progress file, -1 when never studied
+  std::string title;         // file name without extension
+  std::string path;          // full SD path
+  int mastery = -1;          // 0..100 from the deck's progress file, -1 when never studied
   char masteryText[6] = {};  // "100%"
 };
 
@@ -73,6 +73,11 @@ DeckProgress loadProgress(const std::string& deckPath, const std::vector<Card>& 
 bool saveProgress(const std::string& deckPath, const DeckProgress& progress);
 // Raw progress file for a deck file name (for the dashboard upload); empty if none.
 std::string loadProgressText(Library library, const std::string& deckFileName);
+// Card lines as they were after the last sync ("<progress file>.base"); empty if none.
+std::string loadProgressBaseText(Library library, const std::string& deckFileName);
+// Takes over the dashboard's progress for a deck after a sync: keeps the local
+// rounds counter and stores the same card lines as the new base.
+bool applySyncedProgress(Library library, const std::string& deckFileName, unsigned cards, const std::string& body);
 
 // Unfinished round per deck, in <deck folder>/.progress/<deck file name>.round.
 bool loadRound(const std::string& deckPath, SavedRound& out);

@@ -30,6 +30,7 @@ constexpr char kListTmpPath[] = "/quizlet/.sync_list.tmp";
 // The deck list is one short line per deck; 16 KB is hundreds of decks.
 constexpr size_t kMaxListBytes = 16 * 1024;
 constexpr int kAttempts = 2;
+constexpr char kProgressTmpPath[] = "/quizlet/.sync_progress.tmp";
 
 // Tokens are hex from the dashboard, but encode anything unusual anyway.
 std::string urlEncode(const std::string& value) {
@@ -139,8 +140,8 @@ bool QuizletSyncActivity::runSync() {
   HttpDownloader::DownloadError result = HttpDownloader::HTTP_ERROR;
   for (int attempt = 0; attempt < kAttempts && result != HttpDownloader::OK; ++attempt) {
     if (attempt > 0) delay(800);
-    result = HttpDownloader::downloadToFile(deviceUrl(listPath.c_str()), kListTmpPath, nullptr, &cancelRequested,
-                                            "", "", options);
+    result = HttpDownloader::downloadToFile(deviceUrl(listPath.c_str()), kListTmpPath, nullptr, &cancelRequested, "",
+                                            "", options);
     if (result == HttpDownloader::ABORTED) return false;
   }
   if (result != HttpDownloader::OK) {
@@ -158,25 +159,40 @@ bool QuizletSyncActivity::runSync() {
   quizlet::parseRemoteList(listText.get(), listLength, remote);
   listText.reset();
 
-  // 2. Send learning progress so the dashboard can show the hard cards. A
-  // failed upload does not fail the sync; the next sync sends it again.
+  // 2. Send what changed in the learning progress since the last sync, with
+  // the previous values, so the dashboard can merge it with practice on the
+  // website or the Kobo. A failed upload does not fail the sync; that deck
+  // keeps its local progress and sends the same changes next time.
+  std::vector<std::string> uploadFailed;
   for (const auto& deck : remote) {
     if (pollCancel()) return false;
-    const std::string text = quizlet::loadProgressText(library, deck.file);
-    if (text.empty()) continue;
+    std::string delta;
+    {
+      const std::string current = quizlet::loadProgressText(library, deck.file);
+      if (current.empty()) continue;
+      const std::string base = quizlet::loadProgressBaseText(library, deck.file);
+      delta = quizlet::progressDelta(current.c_str(), current.size(), base.c_str(), base.size());
+    }
+    if (delta.empty()) continue;
     freeink::SecureHttpClient http;
     http.setInsecure();
     http.setTimeout(20000);
-    if (!http.begin(deviceUrl(("/api/device/decks/" + deck.id + "/progress").c_str()))) continue;
-    http.addHeader("Content-Type", "text/plain; charset=utf-8");
-    const int status = http.sendRequest("POST", text);
-    http.end();
+    int status = -1;
+    if (http.begin(deviceUrl(("/api/device/decks/" + deck.id + "/progress").c_str()))) {
+      http.addHeader("Content-Type", "text/plain; charset=utf-8");
+      status = http.sendRequest("POST", delta);
+      http.end();
+    }
     if (status == 200) {
       ++uploaded;
     } else {
       LOG_ERR("QZL", "Progress upload for %s failed (%d)", deck.file.c_str(), status);
+      uploadFailed.push_back(deck.id);
     }
   }
+
+  // 2b. Take over the merged progress of every deck in one request.
+  syncProgressFromDashboard(folder, remote, uploadFailed, options);
 
   // 3. Plan against what is on the card.
   std::vector<std::string> localFiles;
@@ -255,9 +271,53 @@ bool QuizletSyncActivity::runSync() {
     todayOptions.stageAsPart = true;
     const auto todayResult = HttpDownloader::downloadToFile(deviceUrl("/api/device/today.txt"), quizlet::kTodayPath,
                                                             nullptr, &cancelRequested, "", "", todayOptions);
-    if (todayResult != HttpDownloader::OK) LOG_ERR("QZL", "Planner download failed (%d)", static_cast<int>(todayResult));
+    if (todayResult != HttpDownloader::OK)
+      LOG_ERR("QZL", "Planner download failed (%d)", static_cast<int>(todayResult));
   }
   return allOk && !cancelRequested;
+}
+
+void QuizletSyncActivity::syncProgressFromDashboard(const std::string& folder,
+                                                    const std::vector<quizlet::RemoteDeck>& remote,
+                                                    const std::vector<std::string>& skip,
+                                                    const HttpDownloader::DownloadOptions& options) {
+  const std::string path = folder.empty() ? "/api/device/progress.txt" : "/api/device/progress.txt?folder=" + folder;
+  Storage.remove(kProgressTmpPath);
+  const auto result = HttpDownloader::downloadToFile(deviceUrl(path.c_str()), kProgressTmpPath, nullptr,
+                                                     &cancelRequested, "", "", options);
+  if (result != HttpDownloader::OK) {
+    // An older dashboard has no progress.txt; local progress simply stays.
+    LOG_ERR("QZL", "Progress download failed (%d)", static_cast<int>(result));
+    Storage.remove(kProgressTmpPath);
+    return;
+  }
+
+  FsFile file;
+  if (!Storage.openFileForRead("QZL", kProgressTmpPath, file)) {
+    LOG_ERR("QZL", "Could not open %s", kProgressTmpPath);
+    return;
+  }
+  unsigned applied = 0;
+  auto onDeck = [&](const quizlet::ServerDeckProgress& deck) {
+    if (std::find(skip.begin(), skip.end(), deck.id) != skip.end()) return;
+    const auto it =
+        std::find_if(remote.begin(), remote.end(), [&deck](const quizlet::RemoteDeck& r) { return r.id == deck.id; });
+    if (it == remote.end()) return;
+    if (quizlet::applySyncedProgress(library, it->file, deck.cards, deck.body)) ++applied;
+  };
+  // Read in small chunks: the file holds every deck and can be larger than the
+  // heap we want to spend; only one deck section is kept in memory at a time.
+  quizlet::ServerProgressReader reader;
+  char chunk[256];
+  while (true) {
+    const int n = file.read(chunk, sizeof(chunk));
+    if (n <= 0) break;
+    reader.feed(chunk, static_cast<size_t>(n), onDeck);
+  }
+  reader.finish(onDeck);
+  file.close();
+  Storage.remove(kProgressTmpPath);
+  LOG_INF("QZL", "Progress taken over from the dashboard for %u decks", applied);
 }
 
 void QuizletSyncActivity::loop() {

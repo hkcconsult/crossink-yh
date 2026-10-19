@@ -9,6 +9,7 @@
 - Sync flashcard decks from the YH dashboard over Wi-Fi: put the downloaded sync.cfg in /quizlet and choose Sync with dashboard. Only new or changed decks are downloaded; decks deleted on the dashboard are removed, and decks you copied to the card yourself are left alone.
 - Smart order for flashcards (Leitner boxes): cards you get wrong come back first and every round, cards you know well come back less often. Progress is kept per deck in /quizlet/.progress and sent to the dashboard on sync, which lists the hard cards.
 - A side button marks a flashcard hard, even when you knew it: it comes back later in the round and first in the next smart rounds.
+- Two-way progress sync: the X4 sends only the cards that changed since the last sync and then takes over the merged progress from the dashboard, so practice on the website or another e-reader counts on the X4 too.
 - Today and tests: after a dashboard sync the Flashcards list shows the planner (homework for today and tomorrow, upcoming tests with how well the linked set is known).
 - The deck list shows how well each deck is known as a percentage.
 - An unfinished flashcard round is saved when you leave it; Continue picks it up again from the options screen.

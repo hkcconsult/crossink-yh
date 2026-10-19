@@ -1,8 +1,10 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "activities/Activity.h"
+#include "network/HttpDownloader.h"
 #include "quizlet/QuizletDeckStore.h"
 #include "quizlet/QuizletSync.h"
 
@@ -37,6 +39,8 @@ class QuizletSyncActivity final : public Activity {
 
   void onWifiReady(bool connected);
   bool runSync();
+  void syncProgressFromDashboard(const std::string& folder, const std::vector<quizlet::RemoteDeck>& remote,
+                                 const std::vector<std::string>& skip, const HttpDownloader::DownloadOptions& options);
   bool pollCancel();
   void setState(State next);
   std::string deviceUrl(const char* path) const;

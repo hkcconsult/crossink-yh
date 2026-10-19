@@ -22,9 +22,7 @@ void forEachLine(const char* text, const size_t length, Fn fn) {
   }
 }
 
-bool startsWith(const std::string& line, const char* prefix) {
-  return line.compare(0, strlen(prefix), prefix) == 0;
-}
+bool startsWith(const std::string& line, const char* prefix) { return line.compare(0, strlen(prefix), prefix) == 0; }
 
 unsigned long valueAfter(const std::string& line, const size_t prefixLength) {
   return strtoul(line.c_str() + prefixLength, nullptr, 10);
@@ -98,7 +96,9 @@ std::vector<uint16_t> pickSmartRound(const std::vector<CardProgress>& cards, con
 }
 
 namespace {
-int boxWeight(const unsigned box) { return box <= 1 ? 0 : static_cast<int>((std::min<unsigned>(box, kMaxBox) - 1) * 25); }
+int boxWeight(const unsigned box) {
+  return box <= 1 ? 0 : static_cast<int>((std::min<unsigned>(box, kMaxBox) - 1) * 25);
+}
 }  // namespace
 
 int masteryPercent(const std::vector<CardProgress>& cards) {
@@ -175,6 +175,70 @@ DeckProgress parseProgress(const char* text, const size_t length, const std::vec
     }
   });
   return progress;
+}
+
+namespace {
+struct KeyedProgress {
+  uint32_t key;
+  unsigned box, wrong, right;
+};
+// "KEYHEX box wrong right" lines, sorted by key; other lines are skipped.
+std::vector<KeyedProgress> parseKeyed(const char* text, const size_t length) {
+  std::vector<KeyedProgress> out;
+  if (text == nullptr) return out;
+  forEachLine(text, length, [&out](const std::string& line) {
+    if (startsWith(line, "rounds=") || startsWith(line, "cards=")) return;
+    char* end = nullptr;
+    const uint32_t key = static_cast<uint32_t>(strtoul(line.c_str(), &end, 16));
+    if (end == line.c_str() || *end != ' ') return;
+    KeyedProgress p{key, 0, 0, 0};
+    p.box = static_cast<unsigned>(strtoul(end, &end, 10));
+    p.wrong = static_cast<unsigned>(strtoul(end, &end, 10));
+    p.right = static_cast<unsigned>(strtoul(end, &end, 10));
+    out.push_back(p);
+  });
+  std::sort(out.begin(), out.end(), [](const KeyedProgress& a, const KeyedProgress& b) { return a.key < b.key; });
+  return out;
+}
+}  // namespace
+
+uint32_t roundsFromText(const char* text, const size_t length) {
+  uint32_t rounds = 0;
+  if (text == nullptr) return rounds;
+  forEachLine(text, length, [&rounds](const std::string& line) {
+    if (startsWith(line, "rounds=")) rounds = static_cast<uint32_t>(valueAfter(line, 7));
+  });
+  return rounds;
+}
+
+std::string progressDelta(const char* current, const size_t currentLength, const char* base, const size_t baseLength) {
+  const auto now = parseKeyed(current, currentLength);
+  const auto before = parseKeyed(base, baseLength);
+  std::string out;
+  char line[80];
+  for (const auto& p : now) {
+    const auto it = std::lower_bound(before.begin(), before.end(), p.key,
+                                     [](const KeyedProgress& a, const uint32_t key) { return a.key < key; });
+    const bool known = it != before.end() && it->key == p.key;
+    const KeyedProgress b = known ? *it : KeyedProgress{p.key, 0, 0, 0};
+    if (b.box == p.box && b.wrong == p.wrong && b.right == p.right) continue;
+    snprintf(line, sizeof(line), "%08lx %u %u %u %u %u %u\n", static_cast<unsigned long>(p.key), p.box, p.wrong,
+             p.right, b.box, b.wrong, b.right);
+    out += line;
+  }
+  return out;
+}
+
+bool ServerProgressReader::parseDeckHeader(const std::string& line, ServerDeckProgress& out) {
+  const size_t idStart = 5;
+  const size_t tab = line.find('\t', idStart);
+  out.id = line.substr(idStart, tab == std::string::npos ? std::string::npos : tab - idStart);
+  out.cards = tab == std::string::npos ? 0 : static_cast<unsigned>(strtoul(line.c_str() + tab + 1, nullptr, 10));
+  return !out.id.empty();
+}
+
+std::string syncedProgressFile(const uint32_t rounds, const unsigned cards, const std::string& body) {
+  return "rounds=" + std::to_string(rounds) + "\ncards=" + std::to_string(cards) + "\n" + body;
 }
 
 std::string serializeRound(const SavedRound& round) {

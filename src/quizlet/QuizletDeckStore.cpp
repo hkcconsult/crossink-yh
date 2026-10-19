@@ -75,9 +75,7 @@ bool lessCaseInsensitive(const DeckEntry& a, const DeckEntry& b) {
 
 }  // namespace
 
-const char* libraryDir(const Library library) {
-  return library == Library::Chinese ? kChineseDir : kDeckDir;
-}
+const char* libraryDir(const Library library) { return library == Library::Chinese ? kChineseDir : kDeckDir; }
 
 const char* librarySyncFolder(const Library library) { return library == Library::Chinese ? "chinese" : ""; }
 
@@ -203,6 +201,21 @@ bool saveProgress(const std::string& deckPath, const DeckProgress& progress) {
 
 std::string loadProgressText(const Library library, const std::string& deckFileName) {
   return readSmallFile((progressDir(library) + "/" + deckFileName).c_str(), kProgressFileBytes);
+}
+
+std::string loadProgressBaseText(const Library library, const std::string& deckFileName) {
+  return readSmallFile((progressDir(library) + "/" + deckFileName + ".base").c_str(), kProgressFileBytes);
+}
+
+bool applySyncedProgress(const Library library, const std::string& deckFileName, const unsigned cards,
+                         const std::string& body) {
+  const std::string dir = progressDir(library);
+  const std::string path = dir + "/" + deckFileName;
+  const std::string current = readSmallFile(path.c_str(), kProgressFileBytes);
+  const uint32_t rounds = roundsFromText(current.c_str(), current.size());
+  // Base first: if the progress write fails, the next delta is only too large, never lost.
+  if (!writeSmallFile((path + ".base").c_str(), body, dir.c_str())) return false;
+  return writeSmallFile(path.c_str(), syncedProgressFile(rounds, cards, body), dir.c_str());
 }
 
 bool hasTodayPlan() { return Storage.exists(kTodayPath); }
